@@ -10,13 +10,48 @@ struct BetterFinderApp: App {
                 .environment(appState)
         }
         .windowStyle(.titleBar)
+
+        Settings {
+            PreferencesView()
+                .environment(appState)
+        }
         .windowToolbarStyle(.unified(showsTitle: false))
         .defaultSize(width: 1200, height: 750)
         .commands {
             SidebarCommands()
             ToolbarCommands()
 
-            CommandGroup(replacing: .newItem) {}
+            CommandGroup(replacing: .newItem) {
+                Button("New File") { appState.newFileInActivePane() }
+                    .keyboardShortcut("n", modifiers: [.command, .option])
+                Button("New Folder") { appState.newFolderInActivePane() }
+                    .keyboardShortcut("n", modifiers: [.command, .shift])
+            }
+
+            CommandMenu("File") {
+                Button("Rename") { appState.renameInActivePane() }
+                    .disabled(appState.activeBrowser.selectedItems.count != 1)
+
+                Button("Move to Trash") { appState.trashInActivePane() }
+                    .keyboardShortcut(.delete, modifiers: .command)
+                    .disabled(appState.activeBrowser.selectedItems.isEmpty)
+
+                if appState.isDualPane {
+                    Divider()
+
+                    let otherPane = appState.activePaneIsSecondary ? 1 : 2
+                    Button("Copy to Pane \(otherPane)") { appState.copySelectionToOtherPane() }
+                        .disabled(appState.activeBrowser.selectedItems.isEmpty)
+
+                    Button("Move to Pane \(otherPane)") { appState.moveSelectionToOtherPane() }
+                        .disabled(appState.activeBrowser.selectedItems.isEmpty)
+
+                    Divider()
+
+                    Button("Go to Other Pane's Location") { appState.goToOtherPaneLocation() }
+                    Button("Mirror Pane") { appState.mirrorActivePaneToOther() }
+                }
+            }
 
             CommandMenu("Go") {
                 Button("Back") { appState.activeBrowser.goBack() }

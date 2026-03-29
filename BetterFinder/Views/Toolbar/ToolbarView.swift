@@ -5,42 +5,49 @@ struct BrowserToolbar: ToolbarContent {
     @Environment(AppState.self) private var appState
 
     var body: some ToolbarContent {
-        // Navigation
+        // Navigation (always bound to active pane)
         ToolbarItemGroup(placement: .navigation) {
-            Button {
-                appState.activeBrowser.goBack()
-            } label: {
+            Button { appState.activeBrowser.goBack() } label: {
                 Image(systemName: "chevron.left")
             }
             .disabled(!appState.activeBrowser.canGoBack)
             .help("Back")
 
-            Button {
-                appState.activeBrowser.goForward()
-            } label: {
+            Button { appState.activeBrowser.goForward() } label: {
                 Image(systemName: "chevron.right")
             }
             .disabled(!appState.activeBrowser.canGoForward)
             .help("Forward")
 
-            Button {
-                appState.activeBrowser.goUp()
-            } label: {
+            Button { appState.activeBrowser.goUp() } label: {
                 Image(systemName: "arrow.up")
             }
             .disabled(appState.activeBrowser.parentURL == nil)
             .help("Enclosing Folder")
         }
 
-        // Search
+        // Search — visible only in single-pane mode.
+        // In dual-pane, each pane has its own search field in PaneHeaderView.
         ToolbarItem(placement: .principal) {
-            @Bindable var browser = appState.activeBrowser
-            SearchField(text: $browser.searchQuery)
-                .frame(minWidth: 200, idealWidth: 260)
+            if appState.isDualPane {
+                EmptyView()
+            } else {
+                @Bindable var browser = appState.activeBrowser
+                SearchField(text: $browser.searchQuery)
+                    .frame(minWidth: 200, idealWidth: 260)
+            }
         }
 
         // Actions
         ToolbarItemGroup(placement: .primaryAction) {
+            // Swap panes — only in dual-pane mode
+            if appState.isDualPane {
+                Button { appState.swapPanes() } label: {
+                    Image(systemName: "arrow.left.arrow.right")
+                }
+                .help("Swap Panes")
+            }
+
             Button {
                 withAnimation(.easeInOut(duration: 0.18)) {
                     appState.isDualPane.toggle()
@@ -50,26 +57,18 @@ struct BrowserToolbar: ToolbarContent {
                       ? "rectangle.split.2x1.fill"
                       : "rectangle.split.2x1")
             }
-            .help(appState.isDualPane ? "Single Pane" : "Dual Pane")
+            .help(appState.isDualPane ? "Single Pane (⌘D)" : "Dual Pane (⌘D)")
             .keyboardShortcut("d", modifiers: .command)
 
-            Button {
-                appState.preferences.showHiddenFiles.toggle()
-            } label: {
-                Image(systemName: appState.preferences.showHiddenFiles
-                      ? "eye.fill"
-                      : "eye.slash")
+            Button { appState.preferences.showHiddenFiles.toggle() } label: {
+                Image(systemName: appState.preferences.showHiddenFiles ? "eye.fill" : "eye.slash")
                     .symbolRenderingMode(.hierarchical)
             }
             .help(appState.preferences.showHiddenFiles ? "Hide Dot Files" : "Show Dot Files")
             .keyboardShortcut(".", modifiers: [.command, .shift])
 
-            Button {
-                appState.activeBrowser.showTerminal.toggle()
-            } label: {
-                Image(systemName: appState.activeBrowser.showTerminal
-                      ? "terminal.fill"
-                      : "terminal")
+            Button { appState.activeBrowser.showTerminal.toggle() } label: {
+                Image(systemName: appState.activeBrowser.showTerminal ? "terminal.fill" : "terminal")
                     .symbolRenderingMode(.hierarchical)
             }
             .help(appState.activeBrowser.showTerminal ? "Hide Terminal (F4)" : "Show Terminal (F4)")
@@ -91,9 +90,7 @@ private struct SearchField: NSViewRepresentable {
     }
 
     func updateNSView(_ nsView: NSSearchField, context: Context) {
-        if nsView.stringValue != text {
-            nsView.stringValue = text
-        }
+        if nsView.stringValue != text { nsView.stringValue = text }
     }
 
     func makeCoordinator() -> Coordinator { Coordinator(text: $text) }
@@ -103,9 +100,7 @@ private struct SearchField: NSViewRepresentable {
         init(text: Binding<String>) { _text = text }
 
         func controlTextDidChange(_ obj: Notification) {
-            if let field = obj.object as? NSSearchField {
-                text = field.stringValue
-            }
+            if let field = obj.object as? NSSearchField { text = field.stringValue }
         }
     }
 }

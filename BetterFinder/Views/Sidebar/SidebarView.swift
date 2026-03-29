@@ -162,10 +162,14 @@ struct TreeRow: View {
             acceptDrop(providers, into: node.url)
         }
         .contextMenu {
-            Button("Open in Pane") { appState.activeBrowser.navigate(to: node.url) }
-            Button("Open in Other Pane") {
+            Button("Open in Pane 1") {
+                appState.primaryBrowser.navigate(to: node.url)
+                appState.activePaneIsSecondary = false
+            }
+            Button("Open in Pane 2") {
                 appState.secondaryBrowser.navigate(to: node.url)
                 appState.isDualPane = true
+                appState.activePaneIsSecondary = true
             }
             Divider()
             Button("Copy Path") {

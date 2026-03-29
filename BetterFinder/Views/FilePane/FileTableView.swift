@@ -8,11 +8,12 @@ struct FileTableView: NSViewRepresentable {
     let browser: BrowserState
     let items: [FileItem]
     let appState: AppState
+    var showLocationInKindColumn: Bool = false
 
     func makeCoordinator() -> Coordinator { Coordinator(browser: browser, appState: appState) }
     func makeNSView(context: Context) -> NSScrollView { context.coordinator.scrollView }
     func updateNSView(_ nsView: NSScrollView, context: Context) {
-        context.coordinator.update(items: items)
+        context.coordinator.update(items: items, showLocationInKindColumn: showLocationInKindColumn)
     }
 }
 
@@ -20,10 +21,35 @@ struct FileTableView: NSViewRepresentable {
 
 fileprivate final class BFTableView: NSTableView {
     var menuProvider: ((Int) -> NSMenu?)?
+    var onActivate: (() -> Void)?
+    var onKeyDown: ((NSEvent) -> Bool)?
+    var onTripleClickRow: ((Int) -> Void)?
 
     override func menu(for event: NSEvent) -> NSMenu? {
         let row = row(at: convert(event.locationInWindow, from: nil))
         return menuProvider?(row) ?? super.menu(for: event)
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        onActivate?()
+        // Triple-click on name column → inline rename (intercept before super so double-action doesn't fire)
+        if event.clickCount == 3 {
+            let pt  = convert(event.locationInWindow, from: nil)
+            let row = self.row(at: pt)
+            let col = self.column(at: pt)
+            if row >= 0, col >= 0, col < tableColumns.count,
+               tableColumns[col].identifier.rawValue == "name" {
+                selectRowIndexes([row], byExtendingSelection: false)
+                onTripleClickRow?(row)
+                return   // skip super → prevents doubleAction from firing
+            }
+        }
+        super.mouseDown(with: event)
+    }
+
+    override func keyDown(with event: NSEvent) {
+        if onKeyDown?(event) == true { return }
+        super.keyDown(with: event)
     }
 }
 
@@ -37,6 +63,7 @@ final class Coordinator: NSObject, NSTableViewDataSource, NSTableViewDelegate {
     let scrollView = NSScrollView()
 
     private var items: [FileItem] = []
+    private var showLocationInKindColumn = false
     private let iconCache = NSCache<NSURL, NSImage>()
     private var suppressSelectionSync = false
 
@@ -91,6 +118,18 @@ final class Coordinator: NSObject, NSTableViewDataSource, NSTableViewDelegate {
         // Context menu
         tableView.menuProvider = { [weak self] row in self?.buildContextMenu(row: row) }
 
+        // Pane activation: clicking anywhere in the table activates this pane
+        tableView.onActivate = { [weak self] in self?.activateThisPane() }
+
+        // Keyboard shortcuts: F2/⌘R rename, F5 copy, F6 move, F7 new folder, ⌘⌫ trash, ↩ open
+        tableView.onKeyDown = { [weak self] event in self?.handleKeyDown(event) ?? false }
+
+        // Triple-click on name column → inline rename
+        tableView.onTripleClickRow = { [weak self] row in self?.beginInlineRename(row: row) }
+
+        // Expose inline rename trigger to BrowserState (used by Operations Bar, menu bar, ⌘R)
+        browser.triggerInlineRename = { [weak self] in self?.beginInlineRenameForSelection() }
+
         // Scroll view
         scrollView.documentView  = tableView
         scrollView.hasVerticalScroller   = true
@@ -102,12 +141,19 @@ final class Coordinator: NSObject, NSTableViewDataSource, NSTableViewDelegate {
 
     // MARK: - Update from SwiftUI
 
-    func update(items newItems: [FileItem]) {
+    func update(items newItems: [FileItem], showLocationInKindColumn newShowLocation: Bool) {
         let changed = newItems.map(\.id) != items.map(\.id)
-        items = newItems
-        tableView.reloadData()
+            || newShowLocation != showLocationInKindColumn
 
-        // Sync selection from browser → table (only when items changed structurally)
+        items = newItems
+        showLocationInKindColumn = newShowLocation
+
+        // Update "Kind" column header to reflect current mode
+        if let kindCol = tableView.tableColumns.first(where: { $0.identifier.rawValue == "kind" }) {
+            kindCol.title = showLocationInKindColumn ? "Location" : "Kind"
+        }
+
+        tableView.reloadData()
         if changed { syncSelection() }
     }
 
@@ -220,7 +266,11 @@ final class Coordinator: NSObject, NSTableViewDataSource, NSTableViewDelegate {
         case "name": return nameCellView(item: item, in: tableView)
         case "date": return labelCell(item.formattedDate, id: "date", align: .left,  in: tableView)
         case "size": return labelCell(item.formattedSize, id: "size", align: .right, in: tableView)
-        case "kind": return labelCell(item.kindDescription, id: "kind", align: .left, in: tableView)
+        case "kind":
+            let kindText = showLocationInKindColumn
+                ? item.url.deletingLastPathComponent().lastPathComponent
+                : item.kindDescription
+            return labelCell(kindText, id: "kind", align: .left, in: tableView)
         default: return nil
         }
     }
@@ -307,6 +357,77 @@ final class Coordinator: NSObject, NSTableViewDataSource, NSTableViewDelegate {
         }
     }
 
+    // MARK: - Pane activation
+
+    private func activateThisPane() {
+        guard appState.isDualPane else { return }
+        let isPrimary = appState.primaryBrowser === browser
+        appState.activePaneIsSecondary = !isPrimary
+    }
+
+    // MARK: - Keyboard shortcuts
+
+    /// Returns `true` if the event was handled (suppresses NSTableView's default beep).
+    private func handleKeyDown(_ event: NSEvent) -> Bool {
+        let hasSelection = !tableView.selectedRowIndexes.isEmpty
+        let prefs = appState.preferences
+
+        // ↩ Return / Enter — open selected items (not customisable)
+        if event.keyCode == 36 || event.keyCode == 76 {
+            guard hasSelection else { return false }
+            openSelected()
+            return true
+        }
+
+        // Rename (primary shortcut from preferences + legacy F2)
+        if prefs.shortcutRename.matches(event) || event.keyCode == 120 {
+            guard hasSelection else { return false }
+            activateThisPane()
+            beginInlineRenameForSelection()
+            return true
+        }
+
+        // Move to Trash
+        if prefs.shortcutTrash.matches(event) {
+            guard hasSelection else { return false }
+            activateThisPane()
+            appState.trashInActivePane()
+            return true
+        }
+
+        // Copy to other pane
+        if prefs.shortcutCopyToPane.matches(event) {
+            guard appState.isDualPane, hasSelection else { return false }
+            activateThisPane()
+            appState.copySelectionToOtherPane()
+            return true
+        }
+
+        // Move to other pane
+        if prefs.shortcutMoveToPane.matches(event) {
+            guard appState.isDualPane, hasSelection else { return false }
+            activateThisPane()
+            appState.moveSelectionToOtherPane()
+            return true
+        }
+
+        // New File
+        if prefs.shortcutNewFile.matches(event) {
+            activateThisPane()
+            appState.newFileInActivePane()
+            return true
+        }
+
+        // New Folder (primary shortcut from preferences + legacy F7)
+        if prefs.shortcutNewFolder.matches(event) || event.keyCode == 98 {
+            activateThisPane()
+            appState.newFolderInActivePane()
+            return true
+        }
+
+        return false
+    }
+
     // MARK: - Selection
 
     func tableViewSelectionDidChange(_ notification: Notification) {
@@ -333,24 +454,40 @@ final class Coordinator: NSObject, NSTableViewDataSource, NSTableViewDelegate {
     // MARK: - Context menu
 
     private func buildContextMenu(row: Int) -> NSMenu? {
-        // If right-clicking on a non-selected row, select it first
-        if row >= 0, !tableView.selectedRowIndexes.contains(row) {
+        // Right-click on empty space → folder-level creation menu
+        guard row >= 0 else { return emptySpaceMenu() }
+
+        // Right-click on a row → select it if not already in the current selection
+        if !tableView.selectedRowIndexes.contains(row) {
             tableView.selectRowIndexes([row], byExtendingSelection: false)
         }
         let selection = tableView.selectedRowIndexes.compactMap {
             $0 < items.count ? items[$0] : nil
         }
-        guard !selection.isEmpty else { return nil }
+        guard !selection.isEmpty else { return emptySpaceMenu() }
 
         let menu = NSMenu()
 
         if selection.count == 1, let item = selection.first {
             menu.addItem(menuItem("Open", #selector(openSelected)))
-            if item.isDirectory {
-                let title = appState.isDualPane ? "Open in Other Pane" : "Open in New Pane"
-                menu.addItem(menuItem(title, #selector(openInOtherPane)))
+
+            // "Open/Reveal in Pane N" — available for both files and folders
+            let isPrimary = appState.primaryBrowser === browser
+            let otherPane = isPrimary ? 2 : 1
+            if appState.isDualPane {
+                let label = (item.isDirectory && !item.isPackage)
+                    ? "Open in Pane \(otherPane)"
+                    : "Reveal in Pane \(otherPane)"
+                menu.addItem(menuItem(label, #selector(openInOtherPane)))
+            } else {
+                let label = (item.isDirectory && !item.isPackage)
+                    ? "Open in New Pane"
+                    : "Reveal in New Pane"
+                menu.addItem(menuItem(label, #selector(openInOtherPane)))
             }
+
             menu.addItem(.separator())
+            menu.addItem(menuItem("Rename", #selector(renameSelected)))
             menu.addItem(menuItem("Copy Path", #selector(copyPath)))
             menu.addItem(.separator())
             menu.addItem(menuItem("Move to Trash", #selector(trashSelected)))
@@ -361,6 +498,16 @@ final class Coordinator: NSObject, NSTableViewDataSource, NSTableViewDelegate {
         }
         return menu
     }
+
+    private func emptySpaceMenu() -> NSMenu {
+        let menu = NSMenu()
+        menu.addItem(menuItem("New File",   #selector(newFileAction)))
+        menu.addItem(menuItem("New Folder", #selector(newFolderAction)))
+        return menu
+    }
+
+    @objc private func newFileAction()   { appState.newFileInActivePane() }
+    @objc private func newFolderAction() { appState.newFolderInActivePane() }
 
     private func menuItem(_ title: String, _ action: Selector) -> NSMenuItem {
         NSMenuItem(title: title, action: action, keyEquivalent: "").also { $0.target = self }
@@ -376,8 +523,60 @@ final class Coordinator: NSObject, NSTableViewDataSource, NSTableViewDelegate {
 
     @objc private func openInOtherPane() {
         guard let first = tableView.selectedRowIndexes.first, first < items.count else { return }
-        appState.secondaryBrowser.navigate(to: items[first].url)
+        let item = items[first]
+        let isPrimary = appState.primaryBrowser === browser
+        let target = isPrimary ? appState.secondaryBrowser : appState.primaryBrowser
+        // Folders: navigate into them. Files: reveal parent directory.
+        let destination = (item.isDirectory && !item.isPackage)
+            ? item.url
+            : item.url.deletingLastPathComponent()
+        target.navigate(to: destination)
         appState.isDualPane = true
+        appState.activePaneIsSecondary = isPrimary
+    }
+
+    @objc private func renameSelected() {
+        beginInlineRenameForSelection()
+    }
+
+    // MARK: - Inline rename
+
+    private func beginInlineRenameForSelection() {
+        guard let row = tableView.selectedRowIndexes.first else { return }
+        beginInlineRename(row: row)
+    }
+
+    private func beginInlineRename(row: Int) {
+        guard row >= 0, row < items.count else { return }
+        let item = items[row]
+        guard let nameColIdx = tableView.tableColumns
+            .firstIndex(where: { $0.identifier.rawValue == "name" }),
+              let cell = tableView.view(atColumn: nameColIdx, row: row,
+                                       makeIfNecessary: false) as? NameCellView
+        else { return }
+
+        activateThisPane()
+        tableView.selectRowIndexes([row], byExtendingSelection: false)
+
+        cell.beginEditing { [weak self] newName in
+            guard let self,
+                  let newName,
+                  !newName.trimmingCharacters(in: .whitespaces).isEmpty,
+                  newName != item.name
+            else { return }
+            let trimmed = newName.trimmingCharacters(in: .whitespaces)
+            let newURL = item.url.deletingLastPathComponent().appendingPathComponent(trimmed)
+            do {
+                try FileManager.default.moveItem(at: item.url, to: newURL)
+            } catch {
+                let alert = NSAlert()
+                alert.messageText = "Could Not Rename"
+                alert.informativeText = error.localizedDescription
+                alert.runModal()
+            }
+            let showHidden = appState.preferences.showHiddenFiles
+            Task { await self.browser.load(showHidden: showHidden) }
+        }
     }
 
     @objc private func copyPath() {
@@ -424,28 +623,46 @@ private final class LabelCellView: NSTableCellView {
     }
 }
 
-// MARK: - Name cell (icon + label)
+// MARK: - Name cell (icon + label, with inline rename support)
 
-private final class NameCellView: NSTableCellView {
+private final class NameCellView: NSTableCellView, NSTextFieldDelegate {
     private let icon  = NSImageView()
-    private let label = NSTextField(labelWithString: "")
+    private let label = NSTextField()
+
+    private var editCompletion: ((String?) -> Void)?
+    private var originalName = ""
+    private var isCancelling = false
 
     override init(frame: NSRect) {
         super.init(frame: frame)
+
         icon.imageScaling = .scaleProportionallyUpOrDown
         icon.imageAlignment = .alignCenter
         addSubview(icon)
-        label.font = .systemFont(ofSize: 13)
-        label.cell?.lineBreakMode = .byTruncatingMiddle
+
+        // Styled as a label by default; made editable on demand
+        label.isEditable      = false
+        label.isSelectable    = false
+        label.isBordered      = false
+        label.drawsBackground = false
+        label.font            = .systemFont(ofSize: 13)
+        label.cell?.lineBreakMode   = .byTruncatingMiddle
+        label.cell?.usesSingleLineMode = true
         addSubview(label)
+
         imageView = icon
         textField = label
     }
     required init?(coder: NSCoder) { fatalError() }
 
     func configure(item: FileItem, icon loadedIcon: NSImage?) {
+        // Abort any in-progress edit if the cell is being recycled
+        if label.isEditable { abortEditing() }
+
         label.stringValue = item.name
         label.alphaValue  = item.isHidden ? 0.45 : 1.0
+        label.textColor   = .labelColor
+
         if let img = loadedIcon {
             icon.image = img
         } else {
@@ -454,12 +671,88 @@ private final class NameCellView: NSTableCellView {
         }
     }
 
+    // MARK: - Inline editing
+
+    func beginEditing(completion: @escaping (String?) -> Void) {
+        guard !label.isEditable else { return }
+        originalName  = label.stringValue
+        editCompletion = completion
+        isCancelling   = false
+
+        label.isEditable      = true
+        label.isSelectable    = true
+        label.isBordered      = true
+        label.drawsBackground = true
+        label.backgroundColor = .textBackgroundColor
+        label.focusRingType   = .exterior
+        label.delegate        = self
+        label.textColor       = .labelColor
+
+        window?.makeFirstResponder(label)
+
+        // Select base name only (no extension), matching Finder behaviour
+        let name = label.stringValue
+        let ext  = (name as NSString).pathExtension
+        let base = ext.isEmpty ? name : (name as NSString).deletingPathExtension
+        label.currentEditor()?.selectedRange = NSRange(location: 0, length: (base as NSString).length)
+    }
+
+    private func commitEditing(accept: Bool) {
+        guard label.isEditable else { return }
+        let result: String? = accept ? label.stringValue.trimmingCharacters(in: .whitespaces) : nil
+
+        label.isEditable      = false
+        label.isSelectable    = false
+        label.isBordered      = false
+        label.drawsBackground = false
+        label.focusRingType   = .none
+        label.delegate        = nil
+
+        if !accept { label.stringValue = originalName }
+
+        editCompletion?(result.flatMap { $0.isEmpty ? nil : $0 })
+        editCompletion = nil
+    }
+
+    private func abortEditing() {
+        isCancelling = true
+        window?.makeFirstResponder(nil)  // triggers controlTextDidEndEditing
+    }
+
+    // MARK: - NSTextFieldDelegate
+
+    func control(_ control: NSControl, textView: NSTextView,
+                 doCommandBy selector: Selector) -> Bool {
+        switch selector {
+        case #selector(NSResponder.insertNewline(_:)):
+            window?.makeFirstResponder(superview) // resign → triggers controlTextDidEndEditing
+            return true
+        case #selector(NSResponder.cancelOperation(_:)):
+            isCancelling = true
+            label.stringValue = originalName
+            window?.makeFirstResponder(superview)
+            return true
+        default:
+            return false
+        }
+    }
+
+    func controlTextDidEndEditing(_ obj: Notification) {
+        commitEditing(accept: !isCancelling)
+        isCancelling = false
+    }
+
+    // MARK: - Layout
+
     override func layout() {
         super.layout()
-        let h = bounds.height
-        let labelH = label.intrinsicContentSize.height
+        let h      = bounds.height
+        let labelH = label.isEditable
+            ? bounds.height - 2          // fill height when editing (shows bezel)
+            : label.intrinsicContentSize.height
+        let labelY = label.isEditable ? 1 : (h - labelH) / 2
         icon.frame  = NSRect(x: 4, y: (h - 16) / 2, width: 16, height: 16)
-        label.frame = NSRect(x: 24, y: (h - labelH) / 2, width: bounds.width - 28, height: labelH)
+        label.frame = NSRect(x: 24, y: labelY, width: bounds.width - 28, height: labelH)
     }
 }
 
