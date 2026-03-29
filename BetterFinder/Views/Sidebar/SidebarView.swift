@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 // MARK: - Sidebar
 
@@ -10,18 +11,14 @@ struct SidebarView: View {
             ScrollView {
                 LazyVStack(spacing: 0) {
 
-                    // MARK: Favorites
                     SectionHeader(title: "Favorites")
-
                     ForEach(appState.favoritesController.flatNodes) { flat in
                         TreeRow(flatNode: flat, controller: appState.favoritesController)
                             .id(flat.id)
                     }
 
-                    // MARK: Locations
                     SectionHeader(title: "Locations")
                         .padding(.top, 6)
-
                     ForEach(appState.treeController.flatNodes) { flat in
                         TreeRow(flatNode: flat, controller: appState.treeController)
                             .id(flat.id)
@@ -31,29 +28,17 @@ struct SidebarView: View {
             }
             .frame(minWidth: 200, idealWidth: 230)
             .background(Color(nsColor: .controlBackgroundColor))
-            // Auto-expand the sidebar tree whenever the active browser navigates
-            // (handles both GUI clicks and terminal cd commands via OSC 7)
             .onChange(of: appState.activeBrowser.currentURL) { _, newURL in
                 Task {
-                    // Expand ancestors in Locations tree so the folder is visible
                     await appState.treeController.expandPath(
-                        to: newURL,
-                        service: appState.fileSystemService,
-                        showHidden: appState.preferences.showHiddenFiles
-                    )
-                    // Expand the target node itself (show its children)
+                        to: newURL, service: appState.fileSystemService,
+                        showHidden: appState.preferences.showHiddenFiles)
                     await appState.treeController.expandNode(
-                        matching: newURL,
-                        service: appState.fileSystemService,
-                        showHidden: appState.preferences.showHiddenFiles
-                    )
-                    // Expand Favorites entry if it matches exactly
+                        matching: newURL, service: appState.fileSystemService,
+                        showHidden: appState.preferences.showHiddenFiles)
                     await appState.favoritesController.expandNode(
-                        matching: newURL,
-                        service: appState.fileSystemService,
-                        showHidden: appState.preferences.showHiddenFiles
-                    )
-                    // Scroll to the matching node
+                        matching: newURL, service: appState.fileSystemService,
+                        showHidden: appState.preferences.showHiddenFiles)
                     let activeID = appState.treeController.flatNodes
                         .first { $0.node.url.standardizedFileURL == newURL.standardizedFileURL }?.id
                         ?? appState.favoritesController.flatNodes
@@ -82,12 +67,15 @@ private struct SectionHeader: View {
     }
 }
 
-// MARK: - Tree Row (shared for favorites + locations)
+// MARK: - Tree Row
 
 struct TreeRow: View {
     @Environment(AppState.self) private var appState
     let flatNode: TreeController.FlatNode
     let controller: TreeController
+
+    @State private var isDragTargeted = false
+    @State private var springLoadTask: Task<Void, Never>?
 
     private var node: TreeNode { flatNode.node }
 
@@ -104,16 +92,12 @@ struct TreeRow: View {
     var body: some View {
         HStack(spacing: 0) {
             // Indentation
-            Spacer()
-                .frame(width: CGFloat(flatNode.depth) * 16 + 4)
+            Color.clear.frame(width: CGFloat(flatNode.depth) * 16 + 4)
 
-            // Chevron — tall hit area, always occupies its column
+            // Chevron — expand / collapse only
             Button {
-                controller.toggle(
-                    node,
-                    service: appState.fileSystemService,
-                    showHidden: appState.preferences.showHiddenFiles
-                )
+                controller.toggle(node, service: appState.fileSystemService,
+                                  showHidden: appState.preferences.showHiddenFiles)
             } label: {
                 ZStack {
                     Color.clear
@@ -128,50 +112,57 @@ struct TreeRow: View {
             }
             .buttonStyle(.plain)
 
-            // Folder icon
-            Image(systemName: node.systemImage)
-                .foregroundStyle(node.iconColor)
-                .font(.system(size: 13))
-                .frame(width: 18)
+            // Icon — tappable, same navigate action
+            Button { navigateAction() } label: {
+                Image(systemName: isDragTargeted ? "folder.fill.badge.plus" : node.systemImage)
+                    .foregroundStyle(isDragTargeted ? Color.accentColor : node.iconColor)
+                    .font(.system(size: 13))
+                    .frame(width: 18, height: 26)
+                    .contentShape(Rectangle())
+                    .animation(.easeInOut(duration: 0.15), value: isDragTargeted)
+            }
+            .buttonStyle(.plain)
 
-            // Name — navigate on click
-            Button {
-                appState.activeBrowser.navigate(to: node.url)
-            } label: {
+            // Name — fills remaining width, tappable everywhere
+            Button { navigateAction() } label: {
                 HStack(spacing: 4) {
                     Text(node.name)
                         .font(.system(size: 13))
                         .lineLimit(1)
                         .truncationMode(.middle)
                         .foregroundStyle(isActive ? Color.accentColor : Color.primary)
-
+                        .textSelection(.disabled)
                     Spacer(minLength: 0)
-
                     if node.isLoading {
-                        ProgressView()
-                            .controlSize(.mini)
-                            .padding(.trailing, 4)
+                        ProgressView().controlSize(.mini).padding(.trailing, 4)
                     }
                 }
+                .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-
-            Spacer(minLength: 8)
+            .frame(maxWidth: .infinity)
+            .padding(.trailing, 8)
         }
         .frame(height: 26)
         .background(
-            isActive
-                ? Color.accentColor.opacity(0.10)
-                : Color.clear
+            isDragTargeted
+                ? Color.accentColor.opacity(0.15)
+                : isActive ? Color.accentColor.opacity(0.10) : Color.clear
         )
+        .overlay {
+            if isDragTargeted {
+                RoundedRectangle(cornerRadius: 4)
+                    .stroke(Color.accentColor, lineWidth: 1.5)
+                    .padding(.horizontal, 2)
+            }
+        }
         .contentShape(Rectangle())
-        .onDrag {
-            NSItemProvider(object: node.url as NSURL)
+        .onDrag { NSItemProvider(object: node.url as NSURL) }
+        .onDrop(of: [.fileURL], isTargeted: dragTargetBinding) { providers in
+            acceptDrop(providers, into: node.url)
         }
         .contextMenu {
-            Button("Open in Pane") {
-                appState.activeBrowser.navigate(to: node.url)
-            }
+            Button("Open in Pane") { appState.activeBrowser.navigate(to: node.url) }
             Button("Open in Other Pane") {
                 appState.secondaryBrowser.navigate(to: node.url)
                 appState.isDualPane = true
@@ -179,13 +170,9 @@ struct TreeRow: View {
             Divider()
             Button("Copy Path") {
                 NSPasteboard.general.clearContents()
-                NSPasteboard.general.setString(
-                    node.url.path(percentEncoded: false),
-                    forType: .string
-                )
+                NSPasteboard.general.setString(node.url.path(percentEncoded: false), forType: .string)
             }
             Divider()
-            // Open in BetterFinder's integrated terminal (navigates both file panel + terminal)
             Button("Open in Terminal") {
                 appState.activeBrowser.navigate(to: node.url)
                 appState.activeBrowser.showTerminal = true
@@ -193,9 +180,75 @@ struct TreeRow: View {
             }
         }
     }
+
+    // MARK: - Drop
+
+    private var dragTargetBinding: Binding<Bool> {
+        Binding(
+            get: { isDragTargeted },
+            set: { targeted in
+                isDragTargeted = targeted
+                if targeted {
+                    springLoadTask?.cancel()
+                    springLoadTask = Task {
+                        try? await Task.sleep(nanoseconds: 1_200_000_000) // 1.2 s
+                        guard !Task.isCancelled else { return }
+                        if !node.isExpanded {
+                            controller.toggle(node, service: appState.fileSystemService,
+                                              showHidden: appState.preferences.showHiddenFiles)
+                        }
+                    }
+                } else {
+                    springLoadTask?.cancel()
+                    springLoadTask = nil
+                }
+            }
+        )
+    }
+
+    @discardableResult
+    private func acceptDrop(_ providers: [NSItemProvider], into destination: URL) -> Bool {
+        guard !providers.isEmpty else { return false }
+        let showHidden = appState.preferences.showHiddenFiles
+        for provider in providers {
+            provider.loadObject(ofClass: NSURL.self) { reading, _ in
+                guard let source = reading as? URL else { return }
+                let destPath = destination.path(percentEncoded: false)
+                let srcPath  = source.path(percentEncoded: false)
+                guard source != destination,
+                      !destPath.hasPrefix(srcPath + "/") else { return }
+                let dest = destination.appendingPathComponent(source.lastPathComponent)
+                do {
+                    try FileManager.default.moveItem(at: source, to: dest)
+                } catch {
+                    try? FileManager.default.copyItem(at: source, to: dest)
+                }
+                DispatchQueue.main.async {
+                    Task { await appState.activeBrowser.load(showHidden: showHidden) }
+                }
+            }
+        }
+        return true
+    }
+
+    // MARK: - Navigation
+
+    private func navigateAction() {
+        let alreadyHere = appState.activeBrowser.currentURL.standardizedFileURL
+            == node.url.standardizedFileURL
+
+        appState.activeBrowser.navigate(to: node.url)
+
+        if alreadyHere || node.isExpanded {
+            // Same URL: onChange won't fire, so toggle manually.
+            // Already expanded from a different URL: collapse (onChange will re-expand).
+            controller.toggle(node, service: appState.fileSystemService,
+                              showHidden: appState.preferences.showHiddenFiles)
+        }
+        // Collapsed + URL changes: onChange fires and calls expandNode automatically.
+    }
 }
 
 #Preview {
-    SidebarView()
-        .environment(AppState())
+    SidebarView().environment(AppState())
 }
