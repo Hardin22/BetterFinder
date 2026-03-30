@@ -1,6 +1,7 @@
 import AppKit
 import SwiftUI
 import UniformTypeIdentifiers
+import QuickLookUI
 
 // MARK: - SwiftUI wrapper
 
@@ -25,8 +26,20 @@ fileprivate final class BFTableView: NSTableView {
     var onKeyDown: ((NSEvent) -> Bool)?
     var onTripleClickRow: ((Int) -> Void)?
     var undoManagerProvider: (() -> UndoManager?)?
+    var qlController: (QLPreviewPanelDataSource & QLPreviewPanelDelegate)?
 
     override var undoManager: UndoManager? { undoManagerProvider?() ?? super.undoManager }
+
+    // MARK: Quick Look panel — responder chain hooks
+    override func acceptsPreviewPanelControl(_ panel: QLPreviewPanel!) -> Bool { true }
+    override func beginPreviewPanelControl(_ panel: QLPreviewPanel!) {
+        panel.dataSource = qlController
+        panel.delegate   = qlController
+    }
+    override func endPreviewPanelControl(_ panel: QLPreviewPanel!) {
+        panel.dataSource = nil
+        panel.delegate   = nil
+    }
 
     override func menu(for event: NSEvent) -> NSMenu? {
         let row = row(at: convert(event.locationInWindow, from: nil))
@@ -136,6 +149,9 @@ final class Coordinator: NSObject, NSTableViewDataSource, NSTableViewDelegate {
 
         // Wire our app's UndoManager so ⌘Z / ⌘⇧Z work natively via the responder chain
         tableView.undoManagerProvider = { [weak self] in self?.appState.undoManager }
+
+        // Wire Quick Look data source so Space / context menu works
+        tableView.qlController = self
 
         // Scroll view
         scrollView.documentView  = tableView
@@ -384,6 +400,13 @@ final class Coordinator: NSObject, NSTableViewDataSource, NSTableViewDelegate {
         let hasSelection = !tableView.selectedRowIndexes.isEmpty
         let prefs = appState.preferences
 
+        // Space — Quick Look
+        if event.keyCode == 49 {
+            guard hasSelection else { return false }
+            quickLook()
+            return true
+        }
+
         // ↩ Return / Enter — open selected items (not customisable)
         if event.keyCode == 36 || event.keyCode == 76 {
             guard hasSelection else { return false }
@@ -493,10 +516,8 @@ final class Coordinator: NSObject, NSTableViewDataSource, NSTableViewDelegate {
     // MARK: - Context menu
 
     private func buildContextMenu(row: Int) -> NSMenu? {
-        // Right-click on empty space → folder-level creation menu
         guard row >= 0 else { return emptySpaceMenu() }
 
-        // Right-click on a row → select it if not already in the current selection
         if !tableView.selectedRowIndexes.contains(row) {
             tableView.selectRowIndexes([row], byExtendingSelection: false)
         }
@@ -506,43 +527,110 @@ final class Coordinator: NSObject, NSTableViewDataSource, NSTableViewDelegate {
         guard !selection.isEmpty else { return emptySpaceMenu() }
 
         let menu = NSMenu()
+        let n = selection.count
 
-        if selection.count == 1, let item = selection.first {
+        if n == 1, let item = selection.first {
+            // ── Open ──────────────────────────────────────────────────────────
             menu.addItem(menuItem("Open", #selector(openSelected)))
 
-            // "Open/Reveal in Pane N" — available for both files and folders
+            let openWithSub = buildOpenWithMenu(for: item.url)
+            let openWithItem = NSMenuItem(title: "Open With", action: nil, keyEquivalent: "")
+            openWithItem.submenu = openWithSub
+            menu.addItem(openWithItem)
+
+            menu.addItem(menuItem("Show in Enclosing Folder", #selector(showInEnclosingFolder)))
+
+            // ── Destructive ───────────────────────────────────────────────────
+            menu.addItem(.separator())
+            menu.addItem(menuItem("Move to Trash", #selector(trashSelected)))
+
+            // ── File operations ───────────────────────────────────────────────
+            menu.addItem(.separator())
+            menu.addItem(menuItem("Get Info",                  #selector(getInfo)))
+            menu.addItem(menuItem("Rename",                    #selector(renameSelected)))
+            menu.addItem(menuItem("Compress \"\(item.name)\"", #selector(compress)))
+            menu.addItem(menuItem("Duplicate",                 #selector(duplicate)))
+            menu.addItem(menuItem("Make Alias",                #selector(makeAlias)))
+            menu.addItem(menuItem("Quick Look",                #selector(quickLook)))
+
+            // ── Clipboard / share ─────────────────────────────────────────────
+            menu.addItem(.separator())
+            menu.addItem(menuItem("Copy",      #selector(copyFiles)))
+            menu.addItem(menuItem("Copy Path", #selector(copyPath)))
+            menu.addItem(menuItem("Cut",       #selector(cutSelected)))
+            menu.addItem(menuItem("Share…",    #selector(shareFiles)))
+
+            // ── BetterFinder extras ───────────────────────────────────────────
+            menu.addItem(.separator())
             let isPrimary = appState.primaryBrowser === browser
             let otherPane = isPrimary ? 2 : 1
             if appState.isDualPane {
                 let label = (item.isDirectory && !item.isPackage)
-                    ? "Open in Pane \(otherPane)"
-                    : "Reveal in Pane \(otherPane)"
+                    ? "Open in Pane \(otherPane)" : "Reveal in Pane \(otherPane)"
                 menu.addItem(menuItem(label, #selector(openInOtherPane)))
             } else {
                 let label = (item.isDirectory && !item.isPackage)
-                    ? "Open in New Pane"
-                    : "Reveal in New Pane"
+                    ? "Open in New Pane" : "Reveal in New Pane"
                 menu.addItem(menuItem(label, #selector(openInOtherPane)))
             }
+            menu.addItem(menuItem("Open in Terminal", #selector(openInTerminal)))
+
+        } else {
+            // ── Multi-selection ───────────────────────────────────────────────
+            menu.addItem(menuItem("Open \(n) Items",  #selector(openSelected)))
+            menu.addItem(menuItem("Quick Look",       #selector(quickLook)))
 
             menu.addItem(.separator())
-            menu.addItem(menuItem("Cut",       #selector(cutSelected)))
-            menu.addItem(menuItem("Rename",    #selector(renameSelected)))
-            menu.addItem(menuItem("Copy Path", #selector(copyPath)))
+            menu.addItem(menuItem("Move \(n) Items to Trash", #selector(trashSelected)))
+
+            menu.addItem(.separator())
+            menu.addItem(menuItem("Get Info",           #selector(getInfo)))
+            menu.addItem(menuItem("Compress \(n) Items", #selector(compress)))
+            menu.addItem(menuItem("Duplicate",           #selector(duplicate)))
+            menu.addItem(menuItem("Make Alias",          #selector(makeAlias)))
+
+            menu.addItem(.separator())
+            menu.addItem(menuItem("Copy \(n) Items",  #selector(copyFiles)))
+            menu.addItem(menuItem("Cut \(n) Items",   #selector(cutSelected)))
+            menu.addItem(menuItem("Share…",           #selector(shareFiles)))
+
             menu.addItem(.separator())
             menu.addItem(menuItem("Open in Terminal", #selector(openInTerminal)))
-            menu.addItem(.separator())
-            menu.addItem(menuItem("Move to Trash", #selector(trashSelected)))
-        } else {
-            menu.addItem(menuItem("Open \(selection.count) Items", #selector(openSelected)))
-            menu.addItem(.separator())
-            menu.addItem(menuItem("Cut \(selection.count) Items", #selector(cutSelected)))
-            menu.addItem(.separator())
-            menu.addItem(menuItem("Open in Terminal", #selector(openInTerminal)))
-            menu.addItem(.separator())
-            menu.addItem(menuItem("Move \(selection.count) Items to Trash", #selector(trashSelected)))
         }
         return menu
+    }
+
+    // MARK: - Open With submenu
+
+    private func buildOpenWithMenu(for url: URL) -> NSMenu {
+        let menu = NSMenu()
+        let defaultApp = NSWorkspace.shared.urlForApplication(toOpen: url)
+        let allApps    = NSWorkspace.shared.urlsForApplications(toOpen: url)
+
+        if let def = defaultApp {
+            menu.addItem(appMenuItem(file: url, app: def, suffix: " (default)"))
+            menu.addItem(.separator())
+        }
+
+        let others = allApps.filter { $0 != defaultApp }.prefix(12)
+        for appURL in others {
+            menu.addItem(appMenuItem(file: url, app: appURL, suffix: ""))
+        }
+
+        if defaultApp != nil || !others.isEmpty { menu.addItem(.separator()) }
+        menu.addItem(menuItem("Other…", #selector(openWithOther)))
+        return menu
+    }
+
+    private func appMenuItem(file fileURL: URL, app appURL: URL, suffix: String) -> NSMenuItem {
+        let name = appURL.deletingPathExtension().lastPathComponent + suffix
+        let item = NSMenuItem(title: name, action: #selector(openWithApp(_:)), keyEquivalent: "")
+        item.target = self
+        item.representedObject = [fileURL, appURL] as NSArray
+        let icon = NSWorkspace.shared.icon(forFile: appURL.path(percentEncoded: false))
+        icon.size = NSSize(width: 16, height: 16)
+        item.image = icon
+        return item
     }
 
     private func emptySpaceMenu() -> NSMenu {
@@ -668,6 +756,136 @@ final class Coordinator: NSObject, NSTableViewDataSource, NSTableViewDelegate {
     @objc private func trashSelected() {
         activateThisPane()
         appState.trashInActivePane()
+    }
+
+    // MARK: - New context-menu actions
+
+    @objc private func showInEnclosingFolder() {
+        guard let first = tableView.selectedRowIndexes.first, first < items.count else { return }
+        NSWorkspace.shared.activateFileViewerSelecting([items[first].url])
+    }
+
+    @objc private func getInfo() {
+        let sel = tableView.selectedRowIndexes.compactMap { $0 < items.count ? items[$0] : nil }
+        for item in sel {
+            let path = item.url.path(percentEncoded: false)
+            let p = Process()
+            p.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
+            p.arguments = ["-e",
+                "tell application \"Finder\" to open information window of " +
+                "(POSIX file \"\(path.replacingOccurrences(of: "\"", with: "\\\""))\")"]
+            try? p.run()
+        }
+    }
+
+    @objc private func compress() {
+        let sel = tableView.selectedRowIndexes.compactMap { $0 < items.count ? items[$0] : nil }
+        guard !sel.isEmpty else { return }
+        let dir = browser.currentURL
+
+        // Build a unique zip destination name
+        let baseName = sel.count == 1
+            ? sel[0].url.deletingPathExtension().lastPathComponent
+            : "Archive"
+        var destURL = dir.appendingPathComponent("\(baseName).zip")
+        var i = 2
+        while FileManager.default.fileExists(atPath: destURL.path(percentEncoded: false)) {
+            destURL = dir.appendingPathComponent("\(baseName) \(i).zip")
+            i += 1
+        }
+
+        // zip -r dest.zip item1 item2 … (run from the parent directory)
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: "/usr/bin/zip")
+        p.currentDirectoryURL = dir
+        p.arguments = ["-r", destURL.path(percentEncoded: false)] + sel.map(\.name)
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            try? p.run()
+            p.waitUntilExit()
+            DispatchQueue.main.async { Task { await self?.browser.silentRefresh() } }
+        }
+    }
+
+    @objc private func duplicate() {
+        let sel = tableView.selectedRowIndexes.compactMap { $0 < items.count ? items[$0] : nil }
+        for item in sel {
+            let dir  = item.url.deletingLastPathComponent()
+            let name = item.url.deletingPathExtension().lastPathComponent
+            let ext  = item.url.pathExtension
+            var i = 2
+            var dest: URL
+            repeat {
+                let candidate = i == 2
+                    ? (ext.isEmpty ? "\(name) copy" : "\(name) copy.\(ext)")
+                    : (ext.isEmpty ? "\(name) copy \(i)" : "\(name) copy \(i).\(ext)")
+                dest = dir.appendingPathComponent(candidate)
+                i += 1
+            } while FileManager.default.fileExists(atPath: dest.path(percentEncoded: false))
+            try? FileManager.default.copyItem(at: item.url, to: dest)
+        }
+        Task { await browser.silentRefresh() }
+    }
+
+    @objc private func makeAlias() {
+        let sel = tableView.selectedRowIndexes.compactMap { $0 < items.count ? items[$0] : nil }
+        for item in sel {
+            let dir  = item.url.deletingLastPathComponent()
+            let name = item.url.deletingPathExtension().lastPathComponent
+            let ext  = item.url.pathExtension
+            let aliasName = ext.isEmpty ? "\(name) alias" : "\(name) alias.\(ext)"
+            let dest = dir.appendingPathComponent(aliasName)
+            try? FileManager.default.createSymbolicLink(at: dest, withDestinationURL: item.url)
+        }
+        Task { await browser.silentRefresh() }
+    }
+
+    @objc private func quickLook() {
+        guard let panel = QLPreviewPanel.shared() else { return }
+        if panel.isVisible { panel.orderOut(nil) } else { panel.makeKeyAndOrderFront(nil) }
+    }
+
+    @objc private func copyFiles() {
+        let urls = tableView.selectedRowIndexes
+            .compactMap { $0 < items.count ? items[$0].url : nil }
+        guard !urls.isEmpty else { return }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.writeObjects(urls as [NSURL])
+    }
+
+    @objc private func shareFiles() {
+        let urls = tableView.selectedRowIndexes
+            .compactMap { $0 < items.count ? items[$0].url : nil }
+        guard !urls.isEmpty else { return }
+        let picker = NSSharingServicePicker(items: urls)
+        let row = tableView.clickedRow >= 0 ? tableView.clickedRow
+                  : tableView.selectedRowIndexes.first ?? 0
+        if let cell = tableView.view(atColumn: 0, row: row, makeIfNecessary: false) {
+            picker.show(relativeTo: cell.bounds, of: cell, preferredEdge: .minY)
+        } else {
+            picker.show(relativeTo: tableView.bounds, of: tableView, preferredEdge: .minY)
+        }
+    }
+
+    @objc private func openWithApp(_ sender: NSMenuItem) {
+        guard let arr = sender.representedObject as? [URL], arr.count == 2 else { return }
+        NSWorkspace.shared.open([arr[0]], withApplicationAt: arr[1],
+                                configuration: .init()) { _, _ in }
+    }
+
+    @objc private func openWithOther() {
+        guard let first = tableView.selectedRowIndexes.first, first < items.count else { return }
+        let fileURL = items[first].url
+        let panel = NSOpenPanel()
+        panel.message = "Choose an application"
+        panel.prompt  = "Open"
+        panel.directoryURL = URL(fileURLWithPath: "/Applications")
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories    = false
+        panel.begin { response in
+            guard response == .OK, let appURL = panel.url else { return }
+            NSWorkspace.shared.open([fileURL], withApplicationAt: appURL,
+                                    configuration: .init()) { _, _ in }
+        }
     }
 }
 
@@ -830,6 +1048,19 @@ private final class NameCellView: NSTableCellView, NSTextFieldDelegate {
         let labelY = label.isEditable ? 1 : (h - labelH) / 2
         icon.frame  = NSRect(x: 4, y: (h - 16) / 2, width: 16, height: 16)
         label.frame = NSRect(x: 24, y: labelY, width: bounds.width - 28, height: labelH)
+    }
+}
+
+// MARK: - Quick Look data source / delegate
+
+extension Coordinator: QLPreviewPanelDataSource, QLPreviewPanelDelegate {
+    func numberOfPreviewItems(in panel: QLPreviewPanel!) -> Int {
+        tableView.selectedRowIndexes.count
+    }
+    func previewPanel(_ panel: QLPreviewPanel!, previewItemAt index: Int) -> QLPreviewItem! {
+        let rows = tableView.selectedRowIndexes.sorted()
+        guard index < rows.count, rows[index] < items.count else { return nil }
+        return items[rows[index]].url as NSURL
     }
 }
 

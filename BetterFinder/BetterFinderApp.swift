@@ -3,11 +3,20 @@ import SwiftUI
 @main
 struct BetterFinderApp: App {
     @State private var appState = AppState()
+    @State private var serviceProvider = ServiceProvider()
 
     var body: some Scene {
         WindowGroup {
             ContentView()
                 .environment(appState)
+                .onAppear {
+                    // Register the Services provider so "Reveal in BetterFinder"
+                    // appears in the right-click menu of any Cocoa app.
+                    serviceProvider.appState = appState
+                    NSApp.servicesProvider = serviceProvider
+                    // Tell the system to re-scan for updated service registrations.
+                    NSUpdateDynamicServices()
+                }
         }
         .windowStyle(.titleBar)
 
