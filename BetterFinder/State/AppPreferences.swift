@@ -84,6 +84,9 @@ final class AppPreferences {
     var shortcutQuickLook: AppShortcut = .quickLook {
         didSet { saveShortcut(shortcutQuickLook, forKey: Keys.shortcutQuickLook) }
     }
+    var shortcutCut: AppShortcut = .cut {
+        didSet { saveShortcut(shortcutCut, forKey: Keys.shortcutCut) }
+    }
     var shortcutCopy: AppShortcut = .copy {
         didSet { saveShortcut(shortcutCopy, forKey: Keys.shortcutCopy) }
     }
@@ -132,6 +135,7 @@ final class AppPreferences {
         shortcutCopyToPane    = loadShortcut(forKey: Keys.shortcutCopyToPane)    ?? .copyToPane
         shortcutMoveToPane    = loadShortcut(forKey: Keys.shortcutMoveToPane)    ?? .moveToPane
         shortcutQuickLook     = loadShortcut(forKey: Keys.shortcutQuickLook)     ?? .quickLook
+        shortcutCut           = loadShortcut(forKey: Keys.shortcutCut)           ?? .cut
         shortcutCopy          = loadShortcut(forKey: Keys.shortcutCopy)          ?? .copy
         shortcutCopyPath      = loadShortcut(forKey: Keys.shortcutCopyPath)      ?? .copyPath
         shortcutGetInfo       = loadShortcut(forKey: Keys.shortcutGetInfo)       ?? .getInfo
@@ -195,6 +199,7 @@ final class AppPreferences {
         static let shortcutCopyToPane     = "shortcutCopyToPane"
         static let shortcutMoveToPane     = "shortcutMoveToPane"
         static let shortcutQuickLook      = "shortcutQuickLook"
+        static let shortcutCut            = "shortcutCut"
         static let shortcutCopy           = "shortcutCopy"
         static let shortcutCopyPath       = "shortcutCopyPath"
         static let shortcutGetInfo        = "shortcutGetInfo"

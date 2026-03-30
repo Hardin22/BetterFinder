@@ -40,6 +40,7 @@ struct AppShortcut: Codable, Equatable, Hashable {
 
     // Context-menu actions
     static let quickLook    = AppShortcut(keyCode: 49,  modifiers: 0)              // Space
+    static let cut          = AppShortcut(keyCode: 7,   modifiers: mod(.command))  // ⌘X
     static let copy         = AppShortcut(keyCode: 8,   modifiers: mod(.command))  // ⌘C
     static let copyPath     = AppShortcut(keyCode: 8,   modifiers: mod(.command, .shift))  // ⌘⇧C
     static let getInfo      = AppShortcut(keyCode: 34,  modifiers: mod(.command))  // ⌘I

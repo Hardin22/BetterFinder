@@ -570,7 +570,8 @@ final class Coordinator: NSObject, NSTableViewDataSource, NSTableViewDelegate {
                                   icon: "doc.on.clipboard", shortcut: prefs.shortcutCopy))
             menu.addItem(menuItem("Copy Path", #selector(copyPath),
                                   icon: "list.clipboard", shortcut: prefs.shortcutCopyPath))
-            menu.addItem(menuItem("Cut",       #selector(cutSelected), icon: "scissors"))
+            menu.addItem(menuItem("Cut",       #selector(cutSelected),
+                                  icon: "scissors", shortcut: prefs.shortcutCut))
             menu.addItem(menuItem("Share…",    #selector(shareFiles), icon: "square.and.arrow.up"))
 
             // ── BetterFinder extras ───────────────────────────────────────────
@@ -613,7 +614,8 @@ final class Coordinator: NSObject, NSTableViewDataSource, NSTableViewDelegate {
             menu.addItem(.separator())
             menu.addItem(menuItem("Copy \(n) Items", #selector(copyFiles),
                                   icon: "doc.on.clipboard", shortcut: prefs.shortcutCopy))
-            menu.addItem(menuItem("Cut \(n) Items",  #selector(cutSelected), icon: "scissors"))
+            menu.addItem(menuItem("Cut \(n) Items",  #selector(cutSelected),
+                                  icon: "scissors", shortcut: prefs.shortcutCut))
             menu.addItem(menuItem("Share…",          #selector(shareFiles),  icon: "square.and.arrow.up"))
 
             menu.addItem(.separator())

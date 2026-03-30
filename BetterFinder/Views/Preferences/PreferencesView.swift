@@ -102,6 +102,7 @@ private struct ShortcutsPrefsTab: View {
             }
             Section("Context Menu") {
                 shortcutRow("Quick Look",  shortcut: $prefs.shortcutQuickLook,  default: .quickLook)
+                shortcutRow("Cut",         shortcut: $prefs.shortcutCut,        default: .cut)
                 shortcutRow("Copy",        shortcut: $prefs.shortcutCopy,       default: .copy)
                 shortcutRow("Copy Path",   shortcut: $prefs.shortcutCopyPath,   default: .copyPath)
                 shortcutRow("Get Info",    shortcut: $prefs.shortcutGetInfo,    default: .getInfo)
