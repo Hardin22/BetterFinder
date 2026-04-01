@@ -202,6 +202,8 @@ struct TreeRow: View {
     @State private var isDragTargeted = false
     @State private var springLoadTask: Task<Void, Never>?
     @State private var folderIcon: NSImage?
+    @State private var isEjecting = false
+    @State private var isVolumeEjectable = false
 
     private var node: TreeNode { flatNode.node }
 
@@ -300,7 +302,28 @@ struct TreeRow: View {
             }
             .buttonStyle(.plain)
             .frame(maxWidth: .infinity)
-            .padding(.trailing, 16)
+
+            if isVolumeEjectable {
+                Button {
+                    isEjecting = true
+                    Task {
+                        await appState.ejectVolume(for: node.url)
+                        isEjecting = false
+                    }
+                } label: {
+                    Image(systemName: "eject.fill")
+                        .foregroundStyle(.primary)
+                        .font(.system(size: 11))
+                }
+                .buttonStyle(.plain)
+                .opacity(isEjecting ? 0.5 : 1)
+                .disabled(isEjecting)
+                .help(Text("Eject"))
+                .accessibilityLabel(Text("Eject volume"))
+                .padding(.trailing, 8)
+            } else {
+                Color.clear.frame(width: 8)
+            }
         }
         .frame(height: 26)
         .background(
@@ -341,6 +364,13 @@ struct TreeRow: View {
                 appState.activeBrowser.showTerminal = true
                 appState.activeBrowser.terminalChangeDirectory?(node.url)
             }
+        }
+        .task(id: node.url) {
+            guard node.kind == .volume else {
+                isVolumeEjectable = false
+                return
+            }
+            isVolumeEjectable = await appState.volumeService.isEjectableVolumeAsync(node.url)
         }
     }
 

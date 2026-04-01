@@ -63,9 +63,11 @@ final class BrowserState {
     private var history: [HistoryEntry]
     private var historyIndex: Int
     private let fileSystemService: FileSystemService
+    private let volumeService: VolumeService?
     private var watcher: DirectoryWatcher?
     private var watchedURL: URL?
     private var showHiddenCache = false
+    private var currentVolumeIsEjectableCache: Bool?
 
     // MARK: - Computed
 
@@ -75,6 +77,30 @@ final class BrowserState {
     var parentURL: URL? {
         let parent = currentURL.deletingLastPathComponent()
         return parent == currentURL ? nil : parent
+    }
+
+    var currentVolumeURL: URL? {
+        volumeService?.volumeMountPoint(for: currentURL)
+    }
+
+    var currentVolumeIsEjectable: Bool {
+        currentVolumeIsEjectableCache ?? false
+    }
+
+    func refreshVolumeEjectableCache() {
+        guard let volumeService, let volumeURL = currentVolumeURL else {
+            currentVolumeIsEjectableCache = false
+            return
+        }
+        let cacheSetter = { [weak self] (isEjectable: Bool) in
+            self?.currentVolumeIsEjectableCache = isEjectable
+        }
+        Task.detached(priority: .userInitiated) {
+            let isEjectable = await volumeService.isEjectableVolumeAsync(volumeURL)
+            await MainActor.run {
+                cacheSetter(isEjectable)
+            }
+        }
     }
 
     var filteredItems: [FileItem] {
@@ -113,11 +139,13 @@ final class BrowserState {
 
     // MARK: - Init
 
-    init(url: URL, fileSystemService: FileSystemService) {
+    init(url: URL, fileSystemService: FileSystemService, volumeService: VolumeService? = nil) {
         self.currentURL = url
         self.fileSystemService = fileSystemService
+        self.volumeService = volumeService
         self.history = [HistoryEntry(url: url)]
         self.historyIndex = 0
+        self.currentVolumeIsEjectableCache = nil
 
         var name = "zsh"
         let uid = getuid()
@@ -129,6 +157,7 @@ final class BrowserState {
             if !s.isEmpty { name = URL(fileURLWithPath: s).lastPathComponent }
         }
         self.shellName = name
+        refreshVolumeEjectableCache()
     }
 
     // MARK: - Navigation
@@ -149,6 +178,8 @@ final class BrowserState {
         currentURL = url
         selectedItems = []
         lastSelectedURL = nil
+        currentVolumeIsEjectableCache = nil
+        refreshVolumeEjectableCache()
 
         // Clear search when navigating to a new location
         clearSearch()
