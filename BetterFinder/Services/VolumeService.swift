@@ -1,7 +1,7 @@
 @preconcurrency import Foundation
 
 private let DISK_UTIL_TIMEOUT_SECONDS: TimeInterval = 10
-private nonisolated let MAX_OUTPUT_BYTES = 8192
+private let MAX_OUTPUT_BYTES = 8192
 
 enum VolumeError: Error, LocalizedError {
     case notEjectable
