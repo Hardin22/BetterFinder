@@ -24,6 +24,7 @@ protocol VolumeServiceProtocol: Sendable {
     func volumeMountPoint(for url: URL) -> URL?
     func isEjectableVolume(_ url: URL) -> Bool
     func isEjectableVolumeAsync(_ url: URL) async -> Bool
+    func ejectVolume(at url: URL) async throws
 }
 
 final class VolumeService: VolumeServiceProtocol {
@@ -157,8 +158,8 @@ final class VolumeService: VolumeServiceProtocol {
 
             guard process.terminationStatus != 0 else { return }
 
-            let stdoutMsg = VolumeService.readLimitedOutput(from: stdoutPipe.fileHandleForReading)
-            let stderrMsg = VolumeService.readLimitedOutput(from: stderrPipe.fileHandleForReading)
+            let stdoutMsg = await VolumeService.readStreamedOutput(from: stdoutPipe.fileHandleForReading)
+            let stderrMsg = await VolumeService.readStreamedOutput(from: stderrPipe.fileHandleForReading)
 
             let combined = [stdoutMsg, stderrMsg]
                 .compactMap { $0 }
@@ -185,8 +186,49 @@ final class VolumeService: VolumeServiceProtocol {
         }
     }
 
-    private static nonisolated func readLimitedOutput(from fileHandle: FileHandle) -> String? {
-        let limitedData = fileHandle.readData(ofLength: MAX_OUTPUT_BYTES)
-        return String(data: limitedData, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
+    private static nonisolated func readStreamedOutput(from fileHandle: FileHandle) async -> String? {
+        await withCheckedContinuation { (continuation: CheckedContinuation<String?, Never>) in
+            var buffer = Data()
+            let maxBytes = MAX_OUTPUT_BYTES
+            let timeoutNanos = UInt64(DISK_UTIL_TIMEOUT_SECONDS * 1_000_000_000)
+
+            let syncQueue = DispatchQueue(label: "BetterFinder.VolumeService.readStreamedOutput")
+            var didResume = false
+
+            func finishWith(_ data: Data) {
+                syncQueue.sync {
+                    guard !didResume else { return }
+                    didResume = true
+                    fileHandle.readabilityHandler = nil
+                    let truncated = data.prefix(maxBytes)
+                    let str = String(data: Data(truncated), encoding: .utf8)?
+                        .trimmingCharacters(in: .whitespacesAndNewlines)
+                    continuation.resume(returning: str)
+                }
+            }
+
+            let handler: (FileHandle) -> Void = { handle in
+                let data = handle.availableData
+                if data.isEmpty {
+                    let current = syncQueue.sync { buffer }
+                    finishWith(current)
+                    return
+                }
+                syncQueue.sync { buffer.append(data) }
+                let shouldFlush = syncQueue.sync { buffer.count >= maxBytes }
+                if shouldFlush {
+                    let current = syncQueue.sync { buffer }
+                    finishWith(current)
+                }
+            }
+
+            fileHandle.readabilityHandler = handler
+
+            Task.detached {
+                try? await Task.sleep(nanoseconds: timeoutNanos)
+                let current = syncQueue.sync { buffer }
+                finishWith(current)
+            }
+        }
     }
 }

@@ -16,6 +16,10 @@ private struct MockVolumeService: VolumeServiceProtocol {
     func isEjectableVolumeAsync(_ url: URL) async -> Bool {
         isEjectableResult
     }
+
+    func ejectVolume(at url: URL) async throws {
+        // No-op for tests
+    }
 }
 
 final class BrowserVolumeTests: XCTestCase {

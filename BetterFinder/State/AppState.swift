@@ -7,9 +7,9 @@ import SwiftUI
 final class AppState {
 
     // MARK: - Services
-
+ 
     let fileSystemService: FileSystemService
-    let volumeService: VolumeService
+    let volumeService: VolumeServiceProtocol
     let preferences = AppPreferences()
     let undoManager = UndoManager()
     /// Tracked so SwiftUI menu items can observe canUndo / canRedo reactively.
@@ -356,8 +356,8 @@ final class AppState {
 
     init() {
         let home = URL.homeDirectory
-        let svc  = FileSystemService()
-        let vol  = VolumeService()
+        let svc: FileSystemService = FileSystemService()
+        let vol: VolumeServiceProtocol = VolumeService()
         self.fileSystemService = svc
         self.volumeService = vol
         self.primaryBrowser    = BrowserState(url: home, fileSystemService: svc, volumeService: vol)
