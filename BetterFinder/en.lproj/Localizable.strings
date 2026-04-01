@@ -1,0 +1,18 @@
+/* Volume errors */
+"VOLUME_NOT_EJECTABLE" = "The volume cannot be ejected.";
+"VOLUME_MOUNT_NOT_FOUND" = "Unable to find the volume mount point.";
+"EJECT_FAILED_FMT" = "Eject failed: %@";
+
+/* Eject UI */
+"EJECT_BUTTON" = "Eject \"%@\"";
+"EJECTING_FMT" = "Ejecting \"%@\"...";
+"EJECT_VOLUME_TOOLTIP" = "Eject Volume";
+
+/* Alert */
+"EJECT_ALERT_TITLE" = "Unable to Eject Volume";
+"EJECT_ALERT_OK" = "OK";
+
+/* DiskUtil errors */
+"DISKUTIL_NOT_FOUND" = "diskutil not found";
+"DISKUTIL_TIMEOUT" = "diskutil timed out";
+"UNKNOWN_ERROR" = "Unknown error";

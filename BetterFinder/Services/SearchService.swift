@@ -1,5 +1,5 @@
-import Foundation
-import AppKit
+@preconcurrency import Foundation
+@preconcurrency import AppKit
 import UniformTypeIdentifiers
 
 /// Performs async file searches for non-current-folder scopes.
@@ -50,13 +50,13 @@ enum SearchService {
                 options: fmOpts
             ) else { return [] }
 
-            for case let url as URL in enumerator {
-                guard !Task.isCancelled else { break }
+            while let obj = enumerator.nextObject(), !Task.isCancelled {
+                guard let url = obj as? URL else { continue }
                 guard textMatches(url.lastPathComponent, query: query, mode: options.matchMode),
                       kindMatches(url, kind: options.fileKind)
                 else { continue }
                 if let item = makeFileItem(url: url) { results.append(item) }
-                if results.count >= 1_000 { break }   // safety cap
+                if results.count >= 1_000 { break }
             }
             return results
         }.value
@@ -64,7 +64,6 @@ enum SearchService {
 
     // MARK: - Spotlight (NSMetadataQuery)
 
-    @MainActor
     private static func spotlightSearch(
         query: String,
         options: SearchOptions,
@@ -77,20 +76,21 @@ enum SearchService {
         mq.sortDescriptors = [NSSortDescriptor(key: NSMetadataItemFSNameKey, ascending: true)]
 
         return await withCheckedContinuation { (continuation: CheckedContinuation<[FileItem], Never>) in
+            nonisolated(unsafe) let query = mq
             var observer: NSObjectProtocol?
             observer = NotificationCenter.default.addObserver(
                 forName: .NSMetadataQueryDidFinishGathering,
                 object: mq,
                 queue: .main
             ) { _ in
-                mq.stop()
+                query.stop()
                 if let obs = observer {
                     NotificationCenter.default.removeObserver(obs)
                     observer = nil
                 }
                 var results: [FileItem] = []
-                for i in 0 ..< mq.resultCount {
-                    guard let md   = mq.result(at: i) as? NSMetadataItem,
+                for i in 0 ..< query.resultCount {
+                    guard let md   = query.result(at: i) as? NSMetadataItem,
                           let path = md.value(forAttribute: NSMetadataItemPathKey) as? String
                     else { continue }
                     let url = URL(fileURLWithPath: path)
@@ -160,9 +160,7 @@ enum SearchService {
         }
     }
 
-    // MARK: - Local match helpers
-
-    static func textMatches(_ name: String, query: String, mode: SearchOptions.MatchMode) -> Bool {
+    nonisolated static func textMatches(_ name: String, query: String, mode: SearchOptions.MatchMode) -> Bool {
         guard !query.isEmpty else { return true }
         switch mode {
         case .nameContains:
@@ -180,23 +178,25 @@ enum SearchService {
         }
     }
 
-    static func kindMatches(_ url: URL, kind: SearchOptions.FileKindFilter) -> Bool {
+    nonisolated static func kindMatches(_ url: URL, kind: SearchOptions.FileKindFilter) -> Bool {
         switch kind {
         case .any:    return true
         case .folder: return (try? url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) ?? false
         case .file:   return !((try? url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) ?? false)
-        default:      return kind.extensions.contains(url.pathExtension.lowercased())
+        default:
+            let exts = kind.extensions
+            return exts.contains(url.pathExtension.lowercased())
         }
     }
 
     // MARK: - FileItem factory
 
-    private static let resourceKeys: [URLResourceKey] = [
+    private static nonisolated let resourceKeys: [URLResourceKey] = [
         .isDirectoryKey, .isPackageKey, .isHiddenKey, .isSymbolicLinkKey,
         .fileSizeKey, .contentModificationDateKey, .creationDateKey, .contentTypeKey
     ]
 
-    static func makeFileItem(url: URL) -> FileItem? {
+    nonisolated static func makeFileItem(url: URL) -> FileItem? {
         guard let v = try? url.resourceValues(forKeys: Set(resourceKeys)) else { return nil }
         return FileItem(
             id:               UUID(),

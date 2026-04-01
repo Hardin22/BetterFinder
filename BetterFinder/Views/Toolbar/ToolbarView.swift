@@ -1,8 +1,10 @@
 import SwiftUI
+import AppKit
 
 /// Toolbar buttons injected via `.toolbar` in ContentView.
 struct BrowserToolbar: ToolbarContent {
     @Environment(AppState.self) private var appState
+    @State private var isEjecting = false
 
     var body: some ToolbarContent {
         // Navigation (always bound to active pane)
@@ -46,6 +48,26 @@ struct BrowserToolbar: ToolbarContent {
                     Image(systemName: "arrow.left.arrow.right")
                 }
                 .help("Swap Panes")
+            }
+
+            if appState.activeBrowser.currentVolumeIsEjectable,
+               let volumeURL = appState.activeBrowser.currentVolumeURL {
+                Button {
+                    isEjecting = true
+                    Task {
+                        await appState.ejectVolume(for: volumeURL)
+                        isEjecting = false
+                    }
+                } label: {
+                    if isEjecting {
+                        ProgressView().controlSize(.small)
+                    } else {
+                        Image(systemName: "eject.circle.fill")
+                            .symbolRenderingMode(.hierarchical)
+                    }
+                }
+                .help(NSLocalizedString("EJECT_VOLUME_TOOLTIP", comment: ""))
+                .disabled(isEjecting)
             }
 
             Button {

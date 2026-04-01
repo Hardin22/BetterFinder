@@ -95,7 +95,7 @@ struct SearchOptions: Equatable {
         }
 
         /// File extensions for client-side kind filtering.
-        var extensions: Set<String> {
+        nonisolated var extensions: Set<String> {
             switch self {
             case .any, .folder, .file: return []
             case .image:
