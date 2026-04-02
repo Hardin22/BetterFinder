@@ -1,0 +1,13 @@
+# Xcode / Build
+build/
+DerivedData/
+*.xcbuilddata
+*.xcworkspace/xcuserdata/
+*.xcuserdatad/
+*.xcuserstate
+*.app
+*.dmg
+.DS_Store
+.build/
+Packages/
+plans/

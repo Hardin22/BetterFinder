@@ -12,7 +12,7 @@ import ImageIO
 // MARK: - Preview kind
 
 private enum PreviewKind {
-    case image, pdf, video, audio, web, text, scene3D, generic
+    case image, pdf, video, audio, web, text, markdown, scene3D, generic
 }
 
 // MARK: - Router
@@ -31,6 +31,7 @@ struct FilePreviewContent: View {
             case .audio:   AudioPreview(url: url)
             case .web:     WebPreview(url: url)
             case .text:    TextPreview(url: url)
+            case .markdown: MarkdownPreviewView(url: url)
             case .scene3D: Scene3DPreview(url: url, onFailed: { scene3DFailed = true })
             case .generic: GenericPreview(url: url)
             }
@@ -58,6 +59,9 @@ struct FilePreviewContent: View {
 
         if Self.webExtensions.contains(ext) || type?.conforms(to: .html) == true { return .web }
 
+        // Markdown files get rendered preview
+        if Self.markdownExtensions.contains(ext) { return .markdown }
+
         if type?.conforms(to: .text)       == true
         || type?.conforms(to: .sourceCode) == true
         || Self.textExtensions.contains(ext)         { return .text }
@@ -79,8 +83,11 @@ struct FilePreviewContent: View {
     private static let webExtensions: Set<String> = [
         "html","htm","xhtml","webarchive","mhtml"
     ]
+    private static let markdownExtensions: Set<String> = [
+        "md", "markdown", "mdown", "mkd", "mkdn"
+    ]
     private static let textExtensions: Set<String> = [
-        "txt","md","markdown","rst","log","csv","tsv",
+        "txt","rst","log","csv","tsv",
         "swift","py","js","ts","jsx","tsx","go","rs","rb","php","java","kt","dart",
         "c","h","cpp","cc","cxx","hpp","m","mm","cs","vb",
         "sh","bash","zsh","fish","ps1","bat","cmd",
@@ -318,7 +325,7 @@ private struct TextPreview: NSViewRepresentable {
         let tv = NSTextView(frame: .zero)
         tv.isEditable                    = false
         tv.isSelectable                  = true
-        tv.isRichText                    = false
+        tv.isRichText                    = true
         tv.drawsBackground               = true
         tv.backgroundColor               = NSColor.textBackgroundColor
         tv.font                          = .monospacedSystemFont(ofSize: 11.5, weight: .regular)
@@ -329,14 +336,27 @@ private struct TextPreview: NSViewRepresentable {
         tv.textContainer?.widthTracksTextView = true
         tv.textContainer?.containerSize  = NSSize(width: 0, height: 1_000_000)
         tv.textContainerInset            = NSSize(width: 10, height: 10)
+        tv.textStorage?.font = .monospacedSystemFont(ofSize: 11.5, weight: .regular)
         return tv
     }
 
     private func loadContent(into tv: NSTextView) {
         let capturedURL = url
+        let ext = url.pathExtension.lowercased()
         Task.detached(priority: .userInitiated) {
             let text = Self.readText(from: capturedURL)
-            await MainActor.run { tv.string = text }
+            await MainActor.run {
+                let highlighted: NSAttributedString
+                if SyntaxHighlighter.isSupportedExtension(ext) {
+                    highlighted = SyntaxHighlighter.highlight(text, forExtension: ext)
+                } else {
+                    highlighted = NSAttributedString(string: text, attributes: [
+                        .font: NSFont.monospacedSystemFont(ofSize: 11.5, weight: .regular),
+                        .foregroundColor: NSColor.labelColor
+                    ])
+                }
+                tv.textStorage?.setAttributedString(highlighted)
+            }
         }
     }
 
@@ -455,6 +475,7 @@ struct GenericPreview: View {
 struct FileInfoBar: View {
     let url: URL
     @State private var info: FileMetadata?
+    @State private var chmodFeedback: String?
 
     var body: some View {
         Group {
@@ -481,37 +502,144 @@ struct FileInfoBar: View {
         ].compactMap { $0 }
 
         return ScrollView(.vertical, showsIndicators: false) {
-            Grid(alignment: .topLeading, horizontalSpacing: 8, verticalSpacing: 2) {
-                ForEach(rows, id: \.0) { label, value in
-                    GridRow(alignment: .top) {
-                        Text(label)
-                            .gridColumnAlignment(.leading)
-                            .foregroundStyle(.secondary)
-                            .fixedSize()
-                        Text(value)
-                            .textSelection(.enabled)
-                            .lineLimit(label == "Path" ? 3 : 2)
-                            .frame(maxWidth: .infinity, alignment: .leading)
+            VStack(alignment: .leading, spacing: 0) {
+                Grid(alignment: .topLeading, horizontalSpacing: 8, verticalSpacing: 2) {
+                    ForEach(rows, id: \.0) { label, value in
+                        GridRow(alignment: .top) {
+                            Text(label)
+                                .gridColumnAlignment(.leading)
+                                .foregroundStyle(.secondary)
+                                .fixedSize()
+                            Text(value)
+                                .textSelection(.enabled)
+                                .lineLimit(label == "Path" ? 3 : 2)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
                     }
                 }
+                .font(.system(size: 10))
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+
+                if m.permissions != nil || m.owner != nil {
+                    Divider()
+
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Permissions")
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundStyle(.secondary)
+
+                        if let perms = m.permissions {
+                            Text(perms)
+                                .font(.system(size: 12, design: .monospaced))
+                                .textSelection(.enabled)
+                        }
+
+                        HStack(spacing: 4) {
+                            if let owner = m.owner { Text(owner) }
+                            if m.owner != nil && m.group != nil { Text(":") }
+                            if let group = m.group { Text(group) }
+                            if let octal = m.permissionsOctal {
+                                Text("(\(octal))")
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        .font(.system(size: 10))
+
+                        HStack(spacing: 4) {
+                            chmodButton(label: "+x") {
+                                applyChmod(add: 0o111)
+                            }
+                            chmodButton(label: "-x") {
+                                applyChmod(remove: 0o111)
+                            }
+                            chmodButton(label: "755") {
+                                applyChmod(mode: 0o755)
+                            }
+                            chmodButton(label: "644") {
+                                applyChmod(mode: 0o644)
+                            }
+                            chmodButton(label: "777") {
+                                applyChmod(mode: 0o777)
+                            }
+                            chmodButton(label: "600") {
+                                applyChmod(mode: 0o600)
+                            }
+
+                            if let feedback = chmodFeedback {
+                                Text(feedback)
+                                    .font(.system(size: 9))
+                                    .foregroundStyle(feedback.hasPrefix("✓") ? .green : .red)
+                                    .transition(.opacity)
+                            }
+                        }
+                    }
+                    .font(.system(size: 10))
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                }
             }
-            .font(.system(size: 10))
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
         }
-        .frame(maxHeight: 150)
+        .frame(maxHeight: 260)
+    }
+
+    private func chmodButton(label: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(label)
+                .font(.system(size: 10, design: .monospaced))
+                .padding(.horizontal, 6)
+                .padding(.vertical, 2)
+        }
+        .buttonStyle(.bordered)
+        .controlSize(.small)
+    }
+
+    private func applyChmod(mode: UInt16) {
+        do {
+            try FileManager.default.setAttributes(
+                [.posixPermissions: mode],
+                ofItemAtPath: url.path
+            )
+            showFeedback(success: true)
+            Task { info = await FileMetadata.load(from: url) }
+        } catch {
+            showFeedback(success: false, error: error.localizedDescription)
+        }
+    }
+
+    private func applyChmod(add bits: UInt16) {
+        guard let current = info?.fileMode else { return }
+        applyChmod(mode: current | bits)
+    }
+
+    private func applyChmod(remove bits: UInt16) {
+        guard let current = info?.fileMode else { return }
+        applyChmod(mode: current & ~bits)
+    }
+
+    private func showFeedback(success: Bool, error: String? = nil) {
+        chmodFeedback = success ? "✓" : "✗ \(error ?? "Failed")"
+        Task {
+            try? await Task.sleep(for: .seconds(2))
+            chmodFeedback = nil
+        }
     }
 }
 
 // MARK: - FileMetadata
 
 struct FileMetadata {
-    let kind:       String
-    let size:       String?
-    let dimensions: String?
-    let duration:   String?
-    let modified:   String?
-    let created:    String?
+    let kind:             String
+    let size:             String?
+    let dimensions:       String?
+    let duration:         String?
+    let modified:         String?
+    let created:          String?
+    let permissions:      String?
+    let owner:            String?
+    let group:            String?
+    let permissionsOctal: String?
+    let fileMode:         UInt16?
 
     static func load(from url: URL) async -> FileMetadata {
         let keys: Set<URLResourceKey> = [
@@ -555,8 +683,20 @@ struct FileMetadata {
             }
         }
 
-        return FileMetadata(kind: kind, size: size, dimensions: dimensions,
-                            duration: duration, modified: modified, created: created)
+        // POSIX permissions
+        let attrs = try? FileManager.default.attributesOfItem(atPath: url.path)
+        let perms = attrs?[.posixPermissions] as? UInt16
+        let owner = attrs?[.ownerAccountName] as? String
+        let group = attrs?[.groupOwnerAccountName] as? String
+        let permissions = perms.map { Self.permissionString(from: $0) }
+        let permissionsOctal = perms.map { String(format: "%03o", $0 & 0o777) }
+
+        return FileMetadata(
+            kind: kind, size: size, dimensions: dimensions,
+            duration: duration, modified: modified, created: created,
+            permissions: permissions, owner: owner, group: group,
+            permissionsOctal: permissionsOctal, fileMode: perms
+        )
     }
 
     // MARK: Helpers
@@ -572,6 +712,15 @@ struct FileMetadata {
         let t = Int(secs); let h = t / 3600; let m = (t % 3600) / 60; let s = t % 60
         return h > 0 ? String(format: "%d:%02d:%02d", h, m, s)
                      : String(format: "%d:%02d", m, s)
+    }
+
+    private static func permissionString(from mode: UInt16) -> String {
+        let chars: [(UInt16, Character, Character)] = [
+            (0o400, "r", "-"), (0o200, "w", "-"), (0o100, "x", "-"),
+            (0o040, "r", "-"), (0o020, "w", "-"), (0o010, "x", "-"),
+            (0o004, "r", "-"), (0o002, "w", "-"), (0o001, "x", "-"),
+        ]
+        return String(chars.map { mode & $0.0 != 0 ? $0.1 : $0.2 })
     }
 
     private static let imageExtensions: Set<String> = [

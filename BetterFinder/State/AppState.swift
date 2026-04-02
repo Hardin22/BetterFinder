@@ -7,13 +7,15 @@ import SwiftUI
 final class AppState {
 
     // MARK: - Services
-
+ 
     let fileSystemService: FileSystemService
+    let volumeService: VolumeServiceProtocol
     let preferences = AppPreferences()
     let undoManager = UndoManager()
     /// Tracked so SwiftUI menu items can observe canUndo / canRedo reactively.
     private(set) var canUndo = false
     private(set) var canRedo = false
+    var alertPresenter: ((String, String) -> Void)?
 
     // MARK: - Browser Panes
 
@@ -176,7 +178,7 @@ final class AppState {
     }
 
     /// Restores previously trashed files and registers an undo action that re-trashes them.
-    private func restoreFiles(_ pairs: [(original: URL, inTrash: URL)], reloadBrowser browser: BrowserState) {
+    private func restoreFiles(_ pairs: [(original: URL, inTrash:  URL)], reloadBrowser browser: BrowserState) {
         let succeeded = pairs.filter {
             (try? FileManager.default.moveItem(at: $0.inTrash, to: $0.original)) != nil
         }
@@ -228,6 +230,11 @@ final class AppState {
         guard isDualPane else { return }
         let otherURL = activePaneIsSecondary ? primaryBrowser.currentURL : secondaryBrowser.currentURL
         activeBrowser.navigate(to: otherURL)
+    }
+
+    /// Trigger path bar editing mode in the active pane (⌘⇧G).
+    func goToFolder() {
+        activeBrowser.triggerPathEdit?()
     }
 
     /// Navigate the other pane to match the active pane (mirror).
@@ -346,6 +353,49 @@ final class AppState {
             .map { $0 }
     }
 
+    // MARK: - Batch Rename
+
+    let batchRenameState = BatchRenameState()
+
+    func batchRenameSelectedItems() {
+        let sel = activeBrowser.selectedFileItems
+        guard !sel.isEmpty else { return }
+        batchRenameState.items = sel.map { item in
+            BatchRenameState.RenameItem(originalURL: item.url,
+                                        originalName: item.name,
+                                        newName: item.name)
+        }
+        batchRenameState.isPresented = true
+    }
+
+    func applyBatchRename() async {
+        let items = batchRenameState.items
+        let browser = activeBrowser
+        var succeeded: [(from: URL, to: URL)] = []
+
+        for item in items where item.newName != item.originalName {
+            let parent = item.originalURL.deletingLastPathComponent()
+            let newURL = parent.appendingPathComponent(item.newName)
+            if (try? FileManager.default.moveItem(at: item.originalURL, to: newURL)) != nil {
+                succeeded.append((item.originalURL, newURL))
+            }
+        }
+
+        if !succeeded.isEmpty {
+            let pairs = succeeded
+            undoManager.setActionName("Batch Rename")
+            undoManager.registerUndo(withTarget: self) { s in
+                for (from, to) in pairs {
+                    try? FileManager.default.moveItem(at: to, to: from)
+                }
+                Task { await browser.silentRefresh() }
+            }
+        }
+
+        batchRenameState.isPresented = false
+        await browser.silentRefresh()
+    }
+
     // MARK: - Tree
 
     let treeController      = TreeController()
@@ -355,10 +405,12 @@ final class AppState {
 
     init() {
         let home = URL.homeDirectory
-        let svc  = FileSystemService()
+        let svc: FileSystemService = FileSystemService()
+        let vol: VolumeServiceProtocol = VolumeService()
         self.fileSystemService = svc
-        self.primaryBrowser    = BrowserState(url: home, fileSystemService: svc)
-        self.secondaryBrowser  = BrowserState(url: home, fileSystemService: svc)
+        self.volumeService = vol
+        self.primaryBrowser    = BrowserState(url: home, fileSystemService: svc, volumeService: vol)
+        self.secondaryBrowser  = BrowserState(url: home, fileSystemService: svc, volumeService: vol)
 
         setupTreeRoots()
         setupFavorites()
@@ -389,12 +441,18 @@ final class AppState {
         NotificationCenter.default.addObserver(
             forName: NSWorkspace.didMountNotification,
             object: nil, queue: .main
-        ) { [weak self] _ in self?.setupTreeRoots() }
-
+        ) { [weak self] notification in
+            let volumeURL = notification.userInfo?[NSWorkspace.volumeURLUserInfoKey] as? URL
+            self?.handleVolumeChange(volumeURL: volumeURL, isMount: true)
+        }
+        
         NotificationCenter.default.addObserver(
             forName: NSWorkspace.didUnmountNotification,
             object: nil, queue: .main
-        ) { [weak self] _ in self?.setupTreeRoots() }
+        ) { [weak self] notification in
+            let volumeURL = notification.userInfo?[NSWorkspace.volumeURLUserInfoKey] as? URL
+            self?.handleVolumeChange(volumeURL: volumeURL, isMount: false)
+        }
 
         // Keep canUndo / canRedo in sync so SwiftUI can observe them.
         let updateUndo = { [weak self] (_: Notification) in
@@ -482,7 +540,30 @@ final class AppState {
 
     // MARK: - Favorites
 
+    private static let favoritesKey = "sidebarFavorites"
+
     private func setupFavorites() {
+        // Load from UserDefaults or use defaults
+        let defaults = UserDefaults.standard
+        if let data = defaults.data(forKey: Self.favoritesKey),
+           let saved = try? JSONDecoder().decode([SavedFavorite].self, from: data) {
+            let nodes = saved.map { saved in
+                let node = TreeNode(url: saved.url, kind: .folder)
+                node.customIcon = saved.customIcon
+                node.isAlias = saved.isAlias
+                if let colorName = saved.colorName {
+                    node.customColor = Self.colorFromName(colorName)
+                }
+                return node
+            }
+            favoritesController.setRoots(nodes)
+        } else {
+            // Default favorites
+            setupDefaultFavorites()
+        }
+    }
+
+    private func setupDefaultFavorites() {
         let home = URL.homeDirectory
         let favURLs: [(URL, TreeNode.Kind)] = [
             (URL(fileURLWithPath: "/Applications"),       .folder),
@@ -492,6 +573,157 @@ final class AppState {
         ]
         let nodes = favURLs.map { TreeNode(url: $0.0, kind: $0.1) }
         favoritesController.setRoots(nodes)
+    }
+
+    /// Save current favorites to UserDefaults
+    func saveFavorites() {
+        let roots = favoritesController.roots
+        let saved = roots.map { node in
+            SavedFavorite(
+                url: node.url,
+                customIcon: node.customIcon,
+                isAlias: node.isAlias,
+                colorName: Self.colorName(from: node.customColor)
+            )
+        }
+        if let data = try? JSONEncoder().encode(saved) {
+            UserDefaults.standard.set(data, forKey: Self.favoritesKey)
+        }
+    }
+
+    private static func colorName(from color: Color?) -> String? {
+        guard let color = color else { return nil }
+        // Simple check - in production would use Color's == operator with standard colors
+        if color == .red { return "red" }
+        if color == .orange { return "orange" }
+        if color == .yellow { return "yellow" }
+        if color == .green { return "green" }
+        if color == .blue { return "blue" }
+        if color == .purple { return "purple" }
+        if color == .pink { return "pink" }
+        return nil
+    }
+
+    private static func colorFromName(_ name: String) -> Color? {
+        switch name {
+        case "red": return .red
+        case "orange": return .orange
+        case "yellow": return .yellow
+        case "green": return .green
+        case "blue": return .blue
+        case "purple": return .purple
+        case "pink": return .pink
+        default: return nil
+        }
+    }
+
+    /// Add a folder to favorites (called on drag & drop)
+    func addFavorite(url: URL) {
+        // Check if already exists
+        if favoritesController.roots.contains(where: { $0.url == url }) { return }
+
+        let node = TreeNode(url: url, kind: .folder)
+        var newRoots = favoritesController.roots + [node]
+        favoritesController.setRoots(newRoots)
+        saveFavorites()
+    }
+
+    /// Remove a favorite by ID
+    func removeFavorite(id: UUID) {
+        var newRoots = favoritesController.roots.filter { $0.id != id }
+        favoritesController.setRoots(newRoots)
+        saveFavorites()
+    }
+
+    /// Update custom properties for a favorite
+    func updateFavorite(id: UUID, customIcon: String? = nil, customColor: Color? = nil, isAlias: Bool? = nil) {
+        guard let node = favoritesController.roots.first(where: { $0.id == id }) else { return }
+        if let icon = customIcon { node.customIcon = icon }
+        if let color = customColor { node.customColor = color }
+        if let alias = isAlias { node.isAlias = alias }
+        saveFavorites()
+    }
+
+    // MARK: - Private
+
+    private struct SavedFavorite: Codable {
+        let url: URL
+        var customIcon: String?
+        var isAlias: Bool
+        var colorName: String?  // "red", "blue", etc - or nil for default
+    }
+
+    func ejectVolume(for url: URL) async {
+        do {
+            try await volumeService.ejectVolume(at: url)
+            await MainActor.run { self.refreshAfterEject() }
+        } catch {
+            await MainActor.run { self.showAlertForEjectError(error) }
+        }
+    }
+
+    @MainActor
+    private func refreshAfterEject() {
+        setupTreeRoots()
+        primaryBrowser.refreshVolumeEjectableCache()
+        secondaryBrowser.refreshVolumeEjectableCache()
+        Task {
+            await primaryBrowser.silentRefresh()
+            await secondaryBrowser.silentRefresh()
+        }
+    }
+
+    @MainActor
+    private func showAlertForEjectError(_ error: Error) {
+        if let presenter = alertPresenter {
+            presenter(
+                NSLocalizedString("EJECT_ALERT_TITLE", comment: ""),
+                error.localizedDescription
+            )
+            return
+        }
+        let alert = NSAlert()
+        alert.messageText = NSLocalizedString("EJECT_ALERT_TITLE", comment: "")
+        alert.informativeText = error.localizedDescription
+        alert.addButton(withTitle: NSLocalizedString("EJECT_ALERT_OK", comment: ""))
+        if let window = NSApp.mainWindow {
+            alert.beginSheetModal(for: window) { _ in }
+        } else {
+            alert.runModal()
+        }
+    }
+    
+    /**
+     Purpose: Centralizza la reazione alle notifiche di mount/unmount. Ricostruisce le radici,
+              aggiorna le cache "ejectable" dei browser e forza refresh/safe-navigate se il volume
+              coinvolto non è più disponibile.
+     Args:
+       - volumeURL: URL? dell'eventuale volume fornito dalla notifica (può essere nil).
+       - isMount: Bool che indica se l'evento è un mount (true) o un unmount (false).
+     Return: Void.
+     Exceptions: Non solleva eccezioni; i fallimenti individuali vengono ignorati per non bloccare l'UI.
+     */
+    private func handleVolumeChange(volumeURL: URL?, isMount: Bool) {
+        setupTreeRoots()
+        primaryBrowser.refreshVolumeEjectableCache()
+        secondaryBrowser.refreshVolumeEjectableCache()
+
+        let browsers: [BrowserState] = [primaryBrowser, secondaryBrowser]
+
+        // On unmount: navigate away if the unmounted volume was the current one
+        if !isMount, let vol = volumeURL {
+            for browser in browsers {
+                if browser.currentVolumeURL?.standardizedFileURL == vol.standardizedFileURL {
+                    browser.navigate(to: FileManager.default.homeDirectoryForCurrentUser)
+                }
+            }
+        }
+
+        // Always verify volume availability and refresh file listings
+        for browser in browsers {
+            browser.checkVolumeAvailability()
+            Task { await browser.silentRefresh() }
+        }
     }
 }
 
