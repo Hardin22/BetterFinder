@@ -15,7 +15,10 @@ struct SidebarView: View {
                     SidebarDropStackSection()
 
                     SectionHeader(title: "Favorites")
-                    // Note: Drag folders from Finder onto this section to add them as favorites
+                    .onDrop(of: [.fileURL], isTargeted: .constant(false)) { providers in
+                        handleFavoriteDrop(providers)
+                    }
+
                     ForEach(appState.favoritesController.flatNodes) { flat in
                         TreeRow(flatNode: flat, controller: appState.favoritesController)
                             .id(flat.id)
@@ -83,6 +86,31 @@ struct SidebarView: View {
                 }
             }
         }
+    }
+
+    // MARK: - Favorites Drop Handler
+
+    private func handleFavoriteDrop(_ providers: [NSItemProvider]) -> Bool {
+        guard !providers.isEmpty else { return false }
+        var collected: [URL] = []
+        let group = DispatchGroup()
+        for provider in providers {
+            group.enter()
+            provider.loadObject(ofClass: NSURL.self) { reading, _ in
+                if let source = reading as? URL { collected.append(source) }
+                group.leave()
+            }
+        }
+        group.notify(queue: .main) {
+            guard !collected.isEmpty else { return }
+            for url in collected {
+                var isDir: ObjCBool = false
+                if FileManager.default.fileExists(atPath: url.path, isDirectory: &isDir), isDir.boolValue {
+                    self.appState.addFavorite(url: url)
+                }
+            }
+        }
+        return true
     }
 }
 
@@ -473,6 +501,31 @@ struct TreeRow: View {
             // Route through moveFiles so the operation is undo-registered (⌘Z reverses it).
             appState.moveFiles(pairs, actionName: "Move",
                                reloadBrowsers: [appState.primaryBrowser, appState.secondaryBrowser])
+        }
+        return true
+    }
+
+    // MARK: - Favorites Drop Handler
+
+    private func handleFavoriteDrop(_ providers: [NSItemProvider]) -> Bool {
+        guard !providers.isEmpty else { return false }
+        var collected: [URL] = []
+        let group = DispatchGroup()
+        for provider in providers {
+            group.enter()
+            provider.loadObject(ofClass: NSURL.self) { reading, _ in
+                if let source = reading as? URL { collected.append(source) }
+                group.leave()
+            }
+        }
+        group.notify(queue: .main) {
+            guard !collected.isEmpty else { return }
+            for url in collected {
+                var isDir: ObjCBool = false
+                if FileManager.default.fileExists(atPath: url.path, isDirectory: &isDir), isDir.boolValue {
+                    self.appState.addFavorite(url: url)
+                }
+            }
         }
         return true
     }
