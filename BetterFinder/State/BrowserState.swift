@@ -105,6 +105,26 @@ final class BrowserState {
         }
         volumeEjectableRefreshTask = task
     }
+    
+    /**
+     Purpose: Verifica se il volume contenente la directory corrente è ancora montato; se non lo è,
+              naviga alla home dell'utente e forza un refresh silenzioso della vista.
+     Args: None.
+     Return: Void.
+     Exceptions: Non lancia eccezioni; ignora se volumeService o currentVolumeURL non sono disponibili.
+     */
+    func checkVolumeAvailability() {
+        guard let volumeService = volumeService else { return }
+        guard let volumeURL = currentVolumeURL else { return }
+        let isMounted = volumeService.isVolumeMounted(volumeURL)
+        if !isMounted {
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+                self.navigate(to: FileManager.default.homeDirectoryForCurrentUser)
+                Task { await self.silentRefresh() }
+            }
+        }
+    }
 
     var filteredItems: [FileItem] {
         let text = searchQuery.trimmingCharacters(in: .whitespaces)

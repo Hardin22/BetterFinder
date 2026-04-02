@@ -393,12 +393,18 @@ final class AppState {
         NotificationCenter.default.addObserver(
             forName: NSWorkspace.didMountNotification,
             object: nil, queue: .main
-        ) { [weak self] _ in self?.setupTreeRoots() }
-
+        ) { [weak self] notification in
+            let volumeURL = notification.userInfo?[NSWorkspace.volumeURLUserInfoKey] as? URL
+            self?.handleVolumeChange(volumeURL: volumeURL, isMount: true)
+        }
+        
         NotificationCenter.default.addObserver(
             forName: NSWorkspace.didUnmountNotification,
             object: nil, queue: .main
-        ) { [weak self] _ in self?.setupTreeRoots() }
+        ) { [weak self] notification in
+            let volumeURL = notification.userInfo?[NSWorkspace.volumeURLUserInfoKey] as? URL
+            self?.handleVolumeChange(volumeURL: volumeURL, isMount: false)
+        }
 
         // Keep canUndo / canRedo in sync so SwiftUI can observe them.
         let updateUndo = { [weak self] (_: Notification) in
@@ -498,8 +504,6 @@ final class AppState {
         favoritesController.setRoots(nodes)
     }
 
-    var alertPresenter: ((String, String) -> Void)?
-
     func ejectVolume(for url: URL) async {
         do {
             try await volumeService.ejectVolume(at: url)
@@ -537,6 +541,39 @@ final class AppState {
             alert.beginSheetModal(for: window) { _ in }
         } else {
             alert.runModal()
+        }
+    }
+    
+    /**
+     Purpose: Centralizza la reazione alle notifiche di mount/unmount. Ricostruisce le radici,
+              aggiorna le cache "ejectable" dei browser e forza refresh/safe-navigate se il volume
+              coinvolto non è più disponibile.
+     Args:
+       - volumeURL: URL? dell'eventuale volume fornito dalla notifica (può essere nil).
+       - isMount: Bool che indica se l'evento è un mount (true) o un unmount (false).
+     Return: Void.
+     Exceptions: Non solleva eccezioni; i fallimenti individuali vengono ignorati per non bloccare l'UI.
+     */
+    private func handleVolumeChange(volumeURL: URL?, isMount: Bool) {
+        setupTreeRoots()
+        primaryBrowser.refreshVolumeEjectableCache()
+        secondaryBrowser.refreshVolumeEjectableCache()
+
+        let browsers: [BrowserState] = [primaryBrowser, secondaryBrowser]
+
+        // On unmount: navigate away if the unmounted volume was the current one
+        if !isMount, let vol = volumeURL {
+            for browser in browsers {
+                if browser.currentVolumeURL?.standardizedFileURL == vol.standardizedFileURL {
+                    browser.navigate(to: FileManager.default.homeDirectoryForCurrentUser)
+                }
+            }
+        }
+
+        // Always verify volume availability and refresh file listings
+        for browser in browsers {
+            browser.checkVolumeAvailability()
+            Task { await browser.silentRefresh() }
         }
     }
 }

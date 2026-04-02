@@ -24,6 +24,7 @@ protocol VolumeServiceProtocol: Sendable {
     func volumeMountPoint(for url: URL) -> URL?
     func isEjectableVolume(_ url: URL) -> Bool
     func isEjectableVolumeAsync(_ url: URL) async -> Bool
+    func isVolumeMounted(_ url: URL) -> Bool
     func ejectVolume(at url: URL) async throws
 }
 
@@ -39,10 +40,14 @@ final class VolumeService: VolumeServiceProtocol {
         guard let volumeURL = resolveVolumeMountPoint(for: url) else { return false }
         return isLocalRemovableVolume(volumeURL)
     }
-
+    
     func isEjectableVolumeAsync(_ url: URL) async -> Bool {
         guard let volumeURL = await resolveVolumeMountPointAsync(for: url) else { return false }
         return await isLocalRemovableVolumeAsync(volumeURL)
+    }
+    
+    nonisolated func isVolumeMounted(_ url: URL) -> Bool {
+        resolveVolumeMountPoint(for: url) != nil
     }
 
     private func resolveVolumeMountPointAsync(for url: URL) async -> URL? {
