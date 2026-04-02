@@ -232,26 +232,35 @@ final class AppState {
         activeBrowser.navigate(to: otherURL)
     }
 
-    /// Show a "Go to Folder" panel (like Finder's ⌘⇧G) that lets the user
-    /// pick or type a directory path, then navigates the active pane to it.
+    /// Show a "Go to Folder" dialog (like Finder's ⌘⇧G) that lets the user
+    /// type a directory path, then navigates the active pane to it.
     @MainActor
     func goToFolder() {
-        let panel = NSOpenPanel()
-        panel.canChooseFiles = false
-        panel.canChooseDirectories = true
-        panel.canCreateDirectories = true
-        panel.allowsMultipleSelection = false
-        panel.directoryURL = activeBrowser.currentURL
-        panel.message = "Enter a folder path or choose one:"
-        panel.prompt = "Go"
+        let alert = NSAlert()
+        alert.messageText = "Go to Folder"
+        alert.informativeText = "Enter the path of the folder you want to open:"
+        alert.alertStyle = .informational
+        alert.addButton(withTitle: "Go")
+        alert.addButton(withTitle: "Cancel")
 
-        // NSOpenPanel shows a text field at the bottom where users can type a path.
-        // When they click "Go", we navigate to the selected directory.
-        panel.begin { [weak self] response in
-            guard response == .OK, let url = panel.url else { return }
-            Task { @MainActor in
-                self?.activeBrowser.navigate(to: url)
-            }
+        let textField = NSTextField(frame: NSRect(x: 0, y: 0, width: 320, height: 24))
+        textField.placeholderString = "/path/to/folder"
+        textField.font = .monospacedSystemFont(ofSize: 13, weight: .regular)
+        textField.stringValue = activeBrowser.currentURL.path(percentEncoded: false)
+        alert.accessoryView = textField
+
+        // Make the text field the first responder so the user can type immediately
+        alert.window.initialFirstResponder = textField
+
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+
+        let input = textField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !input.isEmpty else { return }
+
+        let expanded = NSString(string: input).expandingTildeInPath
+        var isDir: ObjCBool = false
+        if FileManager.default.fileExists(atPath: expanded, isDirectory: &isDir), isDir.boolValue {
+            activeBrowser.navigate(to: URL(fileURLWithPath: expanded))
         }
     }
 
