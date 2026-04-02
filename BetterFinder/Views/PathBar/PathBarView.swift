@@ -9,6 +9,7 @@ struct PathBarView: View {
     @State private var suggestions: [PathSuggestion] = []
     @State private var history: [String] = []
     @State private var selectedIndex: Int = 0
+    @FocusState private var isFieldFocused: Bool
 
     private static let historyKey = "goToFolderHistory"
     private static let maxHistory = 10
@@ -138,6 +139,7 @@ struct PathBarView: View {
             TextField("Path", text: $editText)
                 .textFieldStyle(.plain)
                 .font(.system(size: 12, design: .monospaced))
+                .focused($isFieldFocused)
                 .onSubmit {
                     if !suggestions.isEmpty {
                         editText = suggestions[selectedIndex].path
@@ -294,6 +296,7 @@ struct PathBarView: View {
         }
         selectedIndex = 0
         isEditing = true
+        isFieldFocused = true
     }
 
     private func commitEdit() {

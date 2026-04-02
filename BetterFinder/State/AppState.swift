@@ -178,7 +178,7 @@ final class AppState {
     }
 
     /// Restores previously trashed files and registers an undo action that re-trashes them.
-    private func restoreFiles(_ pairs: [(original: URL, inTrash: URL)], reloadBrowser browser: BrowserState) {
+    private func restoreFiles(_ pairs: [(original: URL, inTrash:  URL)], reloadBrowser browser: BrowserState) {
         let succeeded = pairs.filter {
             (try? FileManager.default.moveItem(at: $0.inTrash, to: $0.original)) != nil
         }
