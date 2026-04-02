@@ -12,7 +12,7 @@ import ImageIO
 // MARK: - Preview kind
 
 private enum PreviewKind {
-    case image, pdf, video, audio, web, text, scene3D, generic
+    case image, pdf, video, audio, web, text, markdown, scene3D, generic
 }
 
 // MARK: - Router
@@ -31,6 +31,7 @@ struct FilePreviewContent: View {
             case .audio:   AudioPreview(url: url)
             case .web:     WebPreview(url: url)
             case .text:    TextPreview(url: url)
+            case .markdown: MarkdownPreviewView(url: url)
             case .scene3D: Scene3DPreview(url: url, onFailed: { scene3DFailed = true })
             case .generic: GenericPreview(url: url)
             }
@@ -58,6 +59,9 @@ struct FilePreviewContent: View {
 
         if Self.webExtensions.contains(ext) || type?.conforms(to: .html) == true { return .web }
 
+        // Markdown files get rendered preview
+        if Self.markdownExtensions.contains(ext) { return .markdown }
+
         if type?.conforms(to: .text)       == true
         || type?.conforms(to: .sourceCode) == true
         || Self.textExtensions.contains(ext)         { return .text }
@@ -79,8 +83,11 @@ struct FilePreviewContent: View {
     private static let webExtensions: Set<String> = [
         "html","htm","xhtml","webarchive","mhtml"
     ]
+    private static let markdownExtensions: Set<String> = [
+        "md", "markdown", "mdown", "mkd", "mkdn"
+    ]
     private static let textExtensions: Set<String> = [
-        "txt","md","markdown","rst","log","csv","tsv",
+        "txt","rst","log","csv","tsv",
         "swift","py","js","ts","jsx","tsx","go","rs","rb","php","java","kt","dart",
         "c","h","cpp","cc","cxx","hpp","m","mm","cs","vb",
         "sh","bash","zsh","fish","ps1","bat","cmd",
