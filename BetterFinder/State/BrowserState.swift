@@ -41,6 +41,9 @@ final class BrowserState {
     /// Set by FileTableView.Coordinator. Triggers inline rename on the currently selected row.
     var triggerInlineRename: (() -> Void)?
 
+    /// Set by PathBarView. Triggers path bar editing with autocomplete.
+    var triggerPathEdit: (() -> Void)?
+
     /// Called by AppState to track recent folders whenever the user navigates.
     var onNavigate: ((URL) -> Void)?
 
@@ -63,9 +66,12 @@ final class BrowserState {
     private var history: [HistoryEntry]
     private var historyIndex: Int
     private let fileSystemService: FileSystemService
+    private let volumeService: VolumeServiceProtocol?
     private var watcher: DirectoryWatcher?
     private var watchedURL: URL?
     private var showHiddenCache = false
+    private var currentVolumeIsEjectableCache: Bool?
+    private var volumeEjectableRefreshTask: Task<Void, Never>?
 
     // MARK: - Computed
 
@@ -75,6 +81,52 @@ final class BrowserState {
     var parentURL: URL? {
         let parent = currentURL.deletingLastPathComponent()
         return parent == currentURL ? nil : parent
+    }
+
+    var currentVolumeURL: URL? {
+        volumeService?.volumeMountPoint(for: currentURL)
+    }
+
+    var currentVolumeIsEjectable: Bool {
+        currentVolumeIsEjectableCache ?? false
+    }
+
+    func refreshVolumeEjectableCache() {
+        volumeEjectableRefreshTask?.cancel()
+        guard let volumeService, let volumeURL = currentVolumeURL else {
+            currentVolumeIsEjectableCache = false
+            return
+        }
+        let capturedVolumeURL = volumeURL
+        let task = Task.detached(priority: .userInitiated) { [weak self] in
+            let isEjectable = await volumeService.isEjectableVolumeAsync(capturedVolumeURL)
+            await MainActor.run {
+                guard let self, !Task.isCancelled,
+                      self.currentVolumeURL == capturedVolumeURL else { return }
+                self.currentVolumeIsEjectableCache = isEjectable
+            }
+        }
+        volumeEjectableRefreshTask = task
+    }
+    
+    /**
+     Purpose: Verifica se il volume contenente la directory corrente è ancora montato; se non lo è,
+              naviga alla home dell'utente e forza un refresh silenzioso della vista.
+     Args: None.
+     Return: Void.
+     Exceptions: Non lancia eccezioni; ignora se volumeService o currentVolumeURL non sono disponibili.
+     */
+    func checkVolumeAvailability() {
+        guard let volumeService = volumeService else { return }
+        guard let volumeURL = currentVolumeURL else { return }
+        let isMounted = volumeService.isVolumeMounted(volumeURL)
+        if !isMounted {
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+                self.navigate(to: FileManager.default.homeDirectoryForCurrentUser)
+                Task { await self.silentRefresh() }
+            }
+        }
     }
 
     var filteredItems: [FileItem] {
@@ -113,12 +165,15 @@ final class BrowserState {
 
     // MARK: - Init
 
-    init(url: URL, fileSystemService: FileSystemService) {
+    init(url: URL, fileSystemService: FileSystemService, volumeService: VolumeServiceProtocol? = nil) {
         self.currentURL = url
         self.fileSystemService = fileSystemService
+        self.volumeService = volumeService
         self.history = [HistoryEntry(url: url)]
         self.historyIndex = 0
-
+ 
+        self.currentVolumeIsEjectableCache = nil
+ 
         var name = "zsh"
         let uid = getuid()
         var buf = [CChar](repeating: 0, count: 1024)
@@ -129,6 +184,7 @@ final class BrowserState {
             if !s.isEmpty { name = URL(fileURLWithPath: s).lastPathComponent }
         }
         self.shellName = name
+        refreshVolumeEjectableCache()
     }
 
     // MARK: - Navigation
@@ -149,6 +205,8 @@ final class BrowserState {
         currentURL = url
         selectedItems = []
         lastSelectedURL = nil
+        currentVolumeIsEjectableCache = nil
+        refreshVolumeEjectableCache()
 
         // Clear search when navigating to a new location
         clearSearch()
