@@ -44,6 +44,13 @@ final class BrowserState {
     /// Called by AppState to track recent folders whenever the user navigates.
     var onNavigate: ((URL) -> Void)?
 
+    // MARK: - Smart Rename Sheet
+
+    /// When `true`, `FilePaneView` presents `SmartRenameSheet`.
+    var showSmartRename: Bool = false
+    /// Files passed to `SmartRenameSheet` when it opens.
+    var smartRenameItems: [FileItem] = []
+
     // MARK: - Private
 
     /// Each history entry stores the URL that was active and — optionally — the search

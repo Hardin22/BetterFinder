@@ -108,6 +108,10 @@ final class AppPreferences {
     var shortcutGlobalActivate: AppShortcut = .globalActivate {
         didSet { saveShortcut(shortcutGlobalActivate, forKey: Keys.shortcutGlobalActivate) }
     }
+    /// Cmd+Shift+R — open SmartRenameSheet for multi-file selection.
+    var shortcutSmartRename: AppShortcut = .smartRename {
+        didSet { saveShortcut(shortcutSmartRename, forKey: Keys.shortcutSmartRename) }
+    }
 
     // MARK: - Init
 
@@ -146,6 +150,7 @@ final class AppPreferences {
         shortcutDuplicate     = loadShortcut(forKey: Keys.shortcutDuplicate)     ?? .duplicate
         shortcutMakeAlias        = loadShortcut(forKey: Keys.shortcutMakeAlias)        ?? .makeAlias
         shortcutGlobalActivate   = loadShortcut(forKey: Keys.shortcutGlobalActivate)   ?? .globalActivate
+        shortcutSmartRename      = loadShortcut(forKey: Keys.shortcutSmartRename)      ?? .smartRename
     }
 
     // MARK: - Shortcut helpers
@@ -211,6 +216,7 @@ final class AppPreferences {
         static let shortcutDuplicate      = "shortcutDuplicate"
         static let shortcutMakeAlias       = "shortcutMakeAlias"
         static let shortcutGlobalActivate  = "shortcutGlobalActivate"
+        static let shortcutSmartRename     = "shortcutSmartRename"
         static let showPreviewPanel        = "showPreviewPanel"
         static let maxRecentFolders       = "maxRecentFolders"
     }

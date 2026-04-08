@@ -47,6 +47,7 @@ struct AppShortcut: Codable, Equatable, Hashable {
     static let duplicate    = AppShortcut(keyCode: 2,   modifiers: mod(.command, .option)) // ⌘⌥D
     static let makeAlias       = AppShortcut(keyCode: 37,  modifiers: mod(.command))  // ⌘L
     static let globalActivate  = AppShortcut(keyCode: 11,  modifiers: mod(.command, .shift)) // ⌘⇧B
+    static let smartRename     = AppShortcut(keyCode: 15,  modifiers: mod(.command, .shift)) // ⌘⇧R
 
     private static func mod(_ flags: NSEvent.ModifierFlags...) -> UInt {
         flags.reduce(NSEvent.ModifierFlags()) { $0.union($1) }.rawValue
