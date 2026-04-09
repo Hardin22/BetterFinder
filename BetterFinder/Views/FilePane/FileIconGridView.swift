@@ -26,6 +26,7 @@ struct FileIconGridView: View {
             }
             .padding(12)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(nsColor: .controlBackgroundColor))
     }
 

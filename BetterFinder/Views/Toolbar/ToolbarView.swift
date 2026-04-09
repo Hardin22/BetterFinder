@@ -47,7 +47,7 @@ struct BrowserToolbar: ToolbarContent {
                 }
             }
             .pickerStyle(.segmented)
-            .frame(width: 58)
+            .frame(width: 80)
             .help("Switch view mode")
         }
 
