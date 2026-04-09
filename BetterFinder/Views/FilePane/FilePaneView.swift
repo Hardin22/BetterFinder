@@ -86,6 +86,7 @@ struct FilePaneView: View {
                         || browser.searchOptions != SearchOptions())
         .background(Color(nsColor: .controlBackgroundColor))
         .onAppear {
+            guard browser.items.isEmpty && !browser.isLoading else { return }
             Task { await browser.load(showHidden: appState.preferences.showHiddenFiles) }
         }
         .onChange(of: browser.currentURL) { _, _ in
