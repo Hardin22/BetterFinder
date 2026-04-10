@@ -71,6 +71,10 @@ struct TerminalSetupView: View {
         isKilocodeInstalled = checkCommandExists("kilocode")
     }
     
+    private func checkNodeInstalled() -> Bool {
+        return checkCommandExists("node")
+    }
+    
     private func checkAutocompleteInstalled() -> Bool {
         // Check manual installation
         if checkDirectoryExists("~/.zsh/zsh-autosuggestions") {
@@ -162,16 +166,32 @@ struct TerminalSetupView: View {
     private func installKilocode() {
         isInstallingKilocode = true
         
-        // Check if Node.js is installed, if not install it via Homebrew
-        let script = """
-        if ! command -v node &> /dev/null; then
+        // Check if Node.js is already installed
+        if checkNodeInstalled() {
+            // Node.js is installed, install Kilocode CLI directly
+            let script = "npm install -g @kilocode/cli"
+            browser.terminalSendText?(script + "\r")
+        } else if isHomebrewInstalled {
+            // Node.js not installed but Homebrew is available, install Node.js via Homebrew
+            let script = """
             echo "Installing Node.js via Homebrew..."
             brew install node
-        fi
-        npm install -g @kilocode/cli
-        """
+            npm install -g @kilocode/cli
+            """
+            browser.terminalSendText?(script + "\r")
+        } else {
+            // Neither Node.js nor Homebrew is installed, show clear message
+            let script = """
+            echo "To install Kilocode CLI, you need either:"
+            echo "1. Homebrew (recommended) - install it first, then try again"
+            echo "2. Node.js - install it manually, then try again"
+            echo ""
+            echo "Visit https://brew.sh for Homebrew installation"
+            echo "Visit https://nodejs.org for Node.js installation"
+            """
+            browser.terminalSendText?(script + "\r")
+        }
         
-        browser.terminalSendText?(script + "\r")
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
             isInstallingKilocode = false
             checkInstalledTools()
