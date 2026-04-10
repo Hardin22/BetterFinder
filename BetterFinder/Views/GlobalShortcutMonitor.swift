@@ -30,19 +30,39 @@ struct GlobalShortcutMonitor: NSViewRepresentable {
                 monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
                     guard let self = self, let appState = self.appState else { return event }
                     
+                    // Skip if terminal is hidden (let characters pass through)
+                    guard appState.activeBrowser.showTerminal else { return event }
+                    
                     let prefs = appState.preferences
                     
-                    // Check each shortcut
-                    if prefs.shortcutToggleTerminal.matches(event) {
-                        self.action?(.toggleTerminal)
+                    // Check each shortcut - only if not a simple character
+                    let isSimpleChar = event.keyCode < 127 && !event.modifierFlags.contains(.command)
+                    
+                    // Terminal font shortcuts (only when terminal is visible)
+                    if prefs.shortcutTerminalFontUp.matches(event) {
+                        self.action?(.terminalFontUp)
+                        return nil
+                    }
+                    if prefs.shortcutTerminalFontDown.matches(event) {
+                        self.action?(.terminalFontDown)
+                        return nil
+                    }
+                    if prefs.shortcutTerminalFontReset.matches(event) {
+                        self.action?(.terminalFontReset)
                         return nil
                     }
                     
+                    // Clear terminal
                     if prefs.shortcutClearTerminal.matches(event) {
                         self.action?(.clearTerminal)
                         return nil
                     }
                     
+                    // Toggle/focus terminal shortcuts
+                    if prefs.shortcutToggleTerminal.matches(event) {
+                        self.action?(.toggleTerminal)
+                        return nil
+                    }
                     if prefs.shortcutFocusTerminal.matches(event) {
                         self.action?(.focusTerminal)
                         return nil
@@ -53,6 +73,7 @@ struct GlobalShortcutMonitor: NSViewRepresentable {
                         return nil
                     }
                     
+                    // Let simple characters pass through to terminal
                     return event
                 }
             } else {
