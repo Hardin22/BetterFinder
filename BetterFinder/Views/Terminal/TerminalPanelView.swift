@@ -13,6 +13,11 @@ struct TerminalPanelView: View {
             SwiftTermRepresentable(browser: browser)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
+        .overlay(alignment: .top) {
+            Rectangle()
+                .fill(Color.accentColor)
+                .frame(height: 2)
+        }
         .onChange(of: browser.currentURL) { _, newURL in
             if browser.terminalSyncEnabled {
                 browser.terminalChangeDirectory?(newURL)

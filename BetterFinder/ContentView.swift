@@ -15,8 +15,17 @@ struct ContentView: View {
         .toolbar {
             BrowserToolbar()
         }
-        .background(F4KeyMonitor {
-            appState.activeBrowser.showTerminal.toggle()
+        .background(GlobalShortcutMonitor(appState: appState) { action in
+            switch action {
+            case .toggleTerminal:
+                appState.activeBrowser.showTerminal.toggle()
+            case .clearTerminal:
+                appState.activeBrowser.terminalSendText?("clear\r")
+            case .focusTerminal:
+                appState.activeBrowser.showTerminal = true
+            case .toggleDualPane:
+                appState.isDualPane.toggle()
+            }
         })
         .sheet(isPresented: Binding(
             get: { appState.batchRenameState.isPresented },

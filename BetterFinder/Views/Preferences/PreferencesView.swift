@@ -157,6 +157,8 @@ private struct ShortcutsPrefsTab: View {
             Section("View") {
                 shortcutRow("Toggle Hidden Files", shortcut: $prefs.shortcutToggleHidden,   default: .toggleHidden)
                 shortcutRow("Toggle Terminal",     shortcut: $prefs.shortcutToggleTerminal, default: .toggleTerminal)
+                shortcutRow("Clear Terminal",      shortcut: $prefs.shortcutClearTerminal,   default: .clearTerminal)
+                shortcutRow("Focus Terminal",      shortcut: $prefs.shortcutFocusTerminal,   default: .focusTerminal)
                 shortcutRow("Toggle Dual Pane",    shortcut: $prefs.shortcutToggleDualPane, default: .toggleDualPane)
             }
             Section("Global Hotkey") {

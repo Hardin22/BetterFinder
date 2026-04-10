@@ -30,7 +30,7 @@ final class AppPreferences {
     var openTerminalByDefault: Bool = false {
         didSet { ud.set(openTerminalByDefault, forKey: Keys.openTerminalByDefault) }
     }
-    var externalTerminal: ExternalTerminal = .terminal {
+    var externalTerminal:   = .terminal {
         didSet { ud.set(externalTerminal.rawValue, forKey: Keys.externalTerminal) }
     }
     var showPreviewPanel: Bool = false {
@@ -86,6 +86,12 @@ final class AppPreferences {
     }
     var shortcutToggleTerminal: AppShortcut = .toggleTerminal {
         didSet { saveShortcut(shortcutToggleTerminal, forKey: Keys.shortcutToggleTerminal) }
+    }
+    var shortcutClearTerminal: AppShortcut = .clearTerminal {
+        didSet { saveShortcut(shortcutClearTerminal, forKey: Keys.shortcutClearTerminal) }
+    }
+    var shortcutFocusTerminal: AppShortcut = .focusTerminal {
+        didSet { saveShortcut(shortcutFocusTerminal, forKey: Keys.shortcutFocusTerminal) }
     }
     var shortcutToggleDualPane: AppShortcut = .toggleDualPane {
         didSet { saveShortcut(shortcutToggleDualPane, forKey: Keys.shortcutToggleDualPane) }
@@ -150,6 +156,8 @@ final class AppPreferences {
         shortcutTrash         = loadShortcut(forKey: Keys.shortcutTrash)         ?? .trash
         shortcutToggleHidden  = loadShortcut(forKey: Keys.shortcutToggleHidden)  ?? .toggleHidden
         shortcutToggleTerminal = loadShortcut(forKey: Keys.shortcutToggleTerminal) ?? .toggleTerminal
+        shortcutClearTerminal   = loadShortcut(forKey: Keys.shortcutClearTerminal)   ?? .clearTerminal
+        shortcutFocusTerminal   = loadShortcut(forKey: Keys.shortcutFocusTerminal)   ?? .focusTerminal
         shortcutToggleDualPane = loadShortcut(forKey: Keys.shortcutToggleDualPane) ?? .toggleDualPane
         shortcutCopyToPane    = loadShortcut(forKey: Keys.shortcutCopyToPane)    ?? .copyToPane
         shortcutMoveToPane    = loadShortcut(forKey: Keys.shortcutMoveToPane)    ?? .moveToPane
@@ -242,6 +250,8 @@ final class AppPreferences {
         static let shortcutTrash          = "shortcutTrash"
         static let shortcutToggleHidden   = "shortcutToggleHidden"
         static let shortcutToggleTerminal = "shortcutToggleTerminal"
+        static let shortcutClearTerminal   = "shortcutClearTerminal"
+        static let shortcutFocusTerminal   = "shortcutFocusTerminal"
         static let shortcutToggleDualPane = "shortcutToggleDualPane"
         static let shortcutCopyToPane     = "shortcutCopyToPane"
         static let shortcutMoveToPane     = "shortcutMoveToPane"
