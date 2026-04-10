@@ -25,6 +25,24 @@
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
 
+	<!-- Sparkle Auto-Update Configuration -->
+	<key>SUFeedURL</key>
+	<string>https://github.com/${GITHUB_REPOSITORY}/releases.atom</string>
+	<key>SUPublicEDKey</key>
+	<string>YOUR_PUBLIC_ED25519_KEY_HERE</string>
+	<key>SUEnableAutomaticChecks</key>
+	<true/>
+	<key>SUAutomaticallyUpdate</key>
+	<false/>
+	<key>SUScheduledCheckInterval</key>
+	<integer>86400</integer>
+	<key>SUAllowsPrompts</key>
+	<true/>
+	<key>SUShowReleaseNotes</key>
+	<true/>
+	<key>SUMinimumSystemVersion</key>
+	<string>15.0</string>
+
 	<!-- Declare support for opening folders so Launch Services accepts us
 	     as a valid handler when the user sets us as default file viewer. -->
 	<key>CFBundleDocumentTypes</key>

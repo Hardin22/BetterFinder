@@ -11,3 +11,6 @@ DerivedData/
 .build/
 Packages/
 plans/
+
+# Sparkle keys (keep private!)
+sparkle_keys/

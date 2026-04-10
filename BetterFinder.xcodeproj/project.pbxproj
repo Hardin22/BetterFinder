@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		13775BA92F76E86300D5D08E /* SwiftTerm in Frameworks */ = {isa = PBXBuildFile; productRef = 13775BA82F76E86300D5D08E /* SwiftTerm */; };
+		13775BAA2F76E86400D5D08E /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = 13775BAC2F76E86400D5D08E /* Sparkle */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -70,6 +71,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				13775BA92F76E86300D5D08E /* SwiftTerm in Frameworks */,
+				13775BAA2F76E86400D5D08E /* Sparkle in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -216,6 +218,7 @@
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				13775BA72F76E86300D5D08E /* XCRemoteSwiftPackageReference "SwiftTerm" */,
+				13775BAD2F76E86400D5D08E /* XCRemoteSwiftPackageReference "Sparkle" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 13775AEF2F75C1C800D5D08E /* Products */;
@@ -425,7 +428,7 @@
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
 				DEAD_CODE_STRIPPING = YES;
-				DEVELOPMENT_TEAM = DQQALW53ZU;
+				DEVELOPMENT_TEAM = RSLTRLG6ZM;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = NO;
@@ -457,7 +460,7 @@
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
 				DEAD_CODE_STRIPPING = YES;
-				DEVELOPMENT_TEAM = DQQALW53ZU;
+				DEVELOPMENT_TEAM = RSLTRLG6ZM;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = NO;
@@ -613,6 +616,14 @@
 				minimumVersion = 1.5.0;
 			};
 		};
+		13775BAD2F76E86400D5D08E /* XCRemoteSwiftPackageReference "Sparkle" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/sparkle-project/Sparkle";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 2.6.0;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -620,6 +631,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 13775BA72F76E86300D5D08E /* XCRemoteSwiftPackageReference "SwiftTerm" */;
 			productName = SwiftTerm;
+		};
+		13775BAC2F76E86400D5D08E /* Sparkle */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 13775BAD2F76E86400D5D08E /* XCRemoteSwiftPackageReference "Sparkle" */;
+			productName = Sparkle;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

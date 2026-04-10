@@ -31,12 +31,14 @@ struct BetterFinderApp: App {
     @State private var serviceProvider = ServiceProvider()
     @State private var hotkeyManager: GlobalHotkeyManager?
     @State private var showFDAPrompt = false
+    @State private var updateManager = UpdateManager()
     @AppStorage("hasPromptedFullDiskAccess") private var hasPromptedFDA = false
 
     var body: some Scene {
         WindowGroup {
             ContentView()
                 .environment(appState)
+                .environment(updateManager)
                 .sheet(isPresented: $showFDAPrompt) {
                     FullDiskAccessView {
                         hasPromptedFDA = true
@@ -74,12 +76,21 @@ struct BetterFinderApp: App {
         Settings {
             PreferencesView()
                 .environment(appState)
+                .environment(updateManager)
         }
         .windowToolbarStyle(.unified(showsTitle: false))
         .defaultSize(width: 1200, height: 750)
         .commands {
             SidebarCommands()
             ToolbarCommands()
+
+            // BetterFinder menu
+            CommandMenu("BetterFinder") {
+                Button("Check for Updates…") {
+                    updateManager.checkForUpdates()
+                }
+                .disabled(!updateManager.canCheckForUpdates)
+            }
 
             // Replace SwiftUI's default Undo/Redo (which uses its own internal
             // UndoManager) with explicit calls to AppState.undoManager so that
@@ -154,6 +165,15 @@ struct BetterFinderApp: App {
             }
 
             CommandMenu("View") {
+                Button("Enter Full Screen") {
+                    if let window = NSApp.windows.first {
+                        window.toggleFullScreen(nil)
+                    }
+                }
+                .keyboardShortcut("f", modifiers: [.command, .control])
+
+                Divider()
+
                 Button(appState.preferences.showHiddenFiles ? "Hide Dot Files" : "Show Dot Files") {
                     appState.preferences.showHiddenFiles.toggle()
                 }

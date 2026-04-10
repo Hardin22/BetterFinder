@@ -17,6 +17,17 @@ A native macOS file manager built with SwiftUI + AppKit — a power-user replace
 
 BetterFinder is a file manager — it needs to read every folder on your system, including protected directories (`~/Library`, `/System`, hidden paths) and run system-wide Spotlight searches. Without FDA, some folders will appear empty or be inaccessible.
 
+### Automatic Updates
+
+BetterFinder includes automatic update checking powered by [Sparkle](https://sparkle-project.org/).
+
+- Updates are checked automatically every 24 hours
+- You can manually check for updates in **BetterFinder → Check for Updates…**
+- All updates are signed and verified before installation
+- Configure update behavior in **Settings → Updates**
+
+See [SPARKLE_SETUP.md](SPARKLE_SETUP.md) for developer setup instructions.
+
 ---
 
 ## Table of Contents

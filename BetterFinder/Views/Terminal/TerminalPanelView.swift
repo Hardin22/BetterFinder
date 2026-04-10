@@ -45,6 +45,17 @@ private struct TerminalHeaderBar: View {
 
             Spacer(minLength: 8)
 
+            // Terminal Extras Setup
+            HeaderButton(
+                icon: "wrench.and.screwdriver",
+                tooltip: "Terminal Tools Setup"
+            ) {
+                browser.showTerminalSetup = true
+            }
+            .popover(isPresented: Bindable(browser).showTerminalSetup, arrowEdge: .bottom) {
+                TerminalSetupView(browser: browser)
+            }
+
             // Sync toggle
             HeaderButton(
                 icon: browser.terminalSyncEnabled

@@ -32,6 +32,7 @@ final class BrowserState {
     // MARK: - Terminal
 
     var showTerminal        = false
+    var showTerminalSetup   = false
     var terminalHeight:   CGFloat = 220
     var terminalFontSize: CGFloat = 13
     var terminalSyncEnabled = true

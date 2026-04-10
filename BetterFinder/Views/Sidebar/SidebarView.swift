@@ -210,10 +210,13 @@ private struct RecentRow: View {
                 NSPasteboard.general.clearContents()
                 NSPasteboard.general.setString(url.path(percentEncoded: false), forType: .string)
             }
-            Button("Open in Terminal") {
+            Button("Open in Terminal Drawer") {
                 appState.activeBrowser.navigate(to: url)
                 appState.activeBrowser.showTerminal = true
                 appState.activeBrowser.terminalChangeDirectory?(url)
+            }
+            Button("Open in \(appState.preferences.externalTerminal.label)") {
+                appState.preferences.externalTerminal.open(url: url)
             }
             Divider()
             Button("Remove from Recents") { appState.removeFromRecents(url) }
@@ -403,7 +406,7 @@ struct TreeRow: View {
             // Favorites customization submenu
             Menu("Customize") {
                 Menu("Icon") {
-                    Button("Folder (default)") { appState.updateFavorite(id: node.id, customIcon: nil) }
+                    Button("Folder (default)") { appState.updateFavoriteClearIcon(id: node.id) }
                     Button("Star") { appState.updateFavorite(id: node.id, customIcon: "star.fill") }
                     Button("Heart") { appState.updateFavorite(id: node.id, customIcon: "heart.fill") }
                     Button("Bookmark") { appState.updateFavorite(id: node.id, customIcon: "bookmark.fill") }

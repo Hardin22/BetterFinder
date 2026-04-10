@@ -30,6 +30,9 @@ final class AppPreferences {
     var openTerminalByDefault: Bool = false {
         didSet { ud.set(openTerminalByDefault, forKey: Keys.openTerminalByDefault) }
     }
+    var externalTerminal: ExternalTerminal = .terminal {
+        didSet { ud.set(externalTerminal.rawValue, forKey: Keys.externalTerminal) }
+    }
     var showPreviewPanel: Bool = false {
         didSet { ud.set(showPreviewPanel, forKey: Keys.showPreviewPanel) }
     }
@@ -130,6 +133,7 @@ final class AppPreferences {
         showStatusBar     = ud.object(forKey: Keys.showStatusBar) as? Bool ?? true
         startInDualPane        = ud.bool(forKey: Keys.startInDualPane)
         openTerminalByDefault  = ud.bool(forKey: Keys.openTerminalByDefault)
+        externalTerminal       = ExternalTerminal(rawValue: ud.string(forKey: Keys.externalTerminal) ?? "") ?? .terminal
         showPreviewPanel       = ud.bool(forKey: Keys.showPreviewPanel)
         maxRecentFolders       = ud.object(forKey: Keys.maxRecentFolders) as? Int ?? 10
         defaultSortColumn    = SortColumn(rawValue: ud.string(forKey: Keys.defaultSortColumn) ?? "") ?? .dateModified
@@ -228,6 +232,7 @@ final class AppPreferences {
         static let showStatusBar         = "showStatusBar"
         static let startInDualPane       = "startInDualPane"
         static let openTerminalByDefault = "openTerminalByDefault"
+        static let externalTerminal      = "externalTerminal"
         static let defaultSearchScope     = "defaultSearchScope"
         static let defaultSearchMatchMode = "defaultSearchMatchMode"
         static let defaultSearchFileKind  = "defaultSearchFileKind"
