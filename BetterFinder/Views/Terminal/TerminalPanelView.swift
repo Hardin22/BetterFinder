@@ -5,11 +5,17 @@ import AppKit
 
 struct TerminalPanelView: View {
     let browser: BrowserState
+    @FocusState private var isTerminalFocused: Bool
 
     var body: some View {
         VStack(spacing: 0) {
             TerminalHeaderBar(browser: browser)
             SwiftTermRepresentable(browser: browser)
+                .focusable(true)
+                .focused($isTerminalFocused)
+                .onAppear {
+                    isTerminalFocused = true
+                }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .onChange(of: browser.currentURL) { _, newURL in
