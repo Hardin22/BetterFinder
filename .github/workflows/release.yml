@@ -44,15 +44,17 @@ jobs:
       - name: Generate Appcast
         run: |
           generate_appcast build/ \
-            --download-url-prefix https://github.com/${{ github.repository }}/releases/download/${{ env.VERSION }}/ \
+            --download-url-prefix https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/ \
             --output build/appcast.xml
 
       - name: Sign Appcast
         run: |
+          # Write the private key to a temporary file with proper PEM format
+          echo "${{ secrets.SPARKLE_PRIVATE_KEY }}" > /tmp/sparkle_private_key.pem
           sign_update build/appcast.xml \
-            --private-key-path <(echo "${{ secrets.SPARKLE_PRIVATE_KEY }}")
-        env:
-          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+            --private-key-path /tmp/sparkle_private_key.pem
+          # Clean up the temporary key file
+          rm /tmp/sparkle_private_key.pem
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2

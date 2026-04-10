@@ -21,7 +21,7 @@ BetterFinder now includes automatic update checking powered by [Sparkle](https:/
 Run the key generation script:
 
 ```bash
-cd /Users/lucabarrella/Documents/BetterFinder
+cd /path/to/BetterFinder
 bash bin/generate_keys.sh
 ```
 

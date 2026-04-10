@@ -14,7 +14,9 @@ struct TerminalSetupView: View {
     @State private var isAutocompleteInstalled = false
     @State private var isKilocodeInstalled = false
     
+    // Detected user shell and path
     @State private var currentShell: ShellType = .zsh
+    @State private var userShellPath: String = ProcessInfo.processInfo.environment["SHELL"] ?? "/bin/zsh"
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -41,7 +43,7 @@ struct TerminalSetupView: View {
                 if currentShell == .zsh {
                     ToolRow(
                         title: "Zsh Autocomplete",
-                        description: "Fish-like fast/unobtrusive autosuggestions for zsh.",
+                        description: "Zsh-autosuggestions plugin for zsh.",
                         icon: "text.cursor",
                         isWorking: isInstallingAutocomplete,
                         isInstalled: isAutocompleteInstalled,
@@ -90,6 +92,7 @@ struct TerminalSetupView: View {
         
         if getpwuid_r(uid, &pw, &buf, buf.count, &ptr) == 0, let p = ptr {
             let shellPath = String(cString: p.pointee.pw_shell)
+            userShellPath = shellPath
             let shellName = URL(fileURLWithPath: shellPath).lastPathComponent.lowercased()
             
             switch shellName {
@@ -105,6 +108,7 @@ struct TerminalSetupView: View {
         } else {
             // Fallback to environment variable
             if let shellEnv = ProcessInfo.processInfo.environment["SHELL"] {
+                userShellPath = shellEnv
                 let shellName = URL(fileURLWithPath: shellEnv).lastPathComponent.lowercased()
                 switch shellName {
                 case "zsh":
@@ -121,18 +125,30 @@ struct TerminalSetupView: View {
     }
     
     private func checkInstalledTools() {
-        isHomebrewInstalled = checkCommandExists("brew")
-        isAutocompleteInstalled = checkAutocompleteInstalled()
-        isKilocodeInstalled = checkCommandExists("kilocode")
+        // Capture state locally to avoid reading @State from background threads
+        let shellCopy = currentShell
+        let shellPathCopy = userShellPath
+
+        DispatchQueue.global(qos: .userInitiated).async {
+            let brewInstalled = self.checkCommandExistsInLoginShell("brew", shellPath: shellPathCopy)
+            let autocompleteInstalled = self.checkAutocompleteInstalled(for: shellCopy)
+            let kilocodeInstalled = self.checkCommandExistsInLoginShell("kilocode", shellPath: shellPathCopy)
+
+            DispatchQueue.main.async {
+                self.isHomebrewInstalled = brewInstalled
+                self.isAutocompleteInstalled = autocompleteInstalled
+                self.isKilocodeInstalled = kilocodeInstalled
+            }
+        }
     }
     
     private func checkNodeInstalled() -> Bool {
-        return checkCommandExists("node")
+        return checkCommandExistsInLoginShell("node", shellPath: userShellPath)
     }
     
-    private func checkAutocompleteInstalled() -> Bool {
+    private func checkAutocompleteInstalled(for shell: ShellType) -> Bool {
         // Only check for zsh-autosuggestions if using zsh
-        guard currentShell == .zsh else { return false }
+        guard shell == .zsh else { return false }
         
         // Check manual installation
         if checkDirectoryExists("~/.zsh/zsh-autosuggestions") {
@@ -150,16 +166,17 @@ struct TerminalSetupView: View {
         return homebrewPaths.first(where: { FileManager.default.fileExists(atPath: $0) }) != nil
     }
     
-    private func checkCommandExists(_ command: String) -> Bool {
-        // First try with which
+    private func checkCommandExistsInLoginShell(_ command: String, shellPath: String? = nil) -> Bool {
+        // Run the user's login shell so PATH matches the interactive terminal
+        let shell = shellPath ?? ProcessInfo.processInfo.environment["SHELL"] ?? "/bin/zsh"
+
         let task = Process()
-        task.launchPath = "/usr/bin/which"
-        task.arguments = [command]
-        
-        let pipe = Pipe()
-        task.standardOutput = pipe
-        task.standardError = pipe
-        
+        task.executableURL = URL(fileURLWithPath: shell)
+        task.arguments = ["-lc", "command -v \(command) >/dev/null 2>&1"]
+
+        task.standardOutput = Pipe()
+        task.standardError = Pipe()
+
         do {
             try task.run()
             task.waitUntilExit()
@@ -167,29 +184,20 @@ struct TerminalSetupView: View {
                 return true
             }
         } catch {
-            // Fall through to alternative checks
+            // Fall through to absolute path checks
         }
-        
-        // If which failed, try common installation paths
+
+        // Fall back to checking common absolute locations
         switch command {
         case "brew":
-            // Check common Homebrew locations
-            let paths = [
-                "/opt/homebrew/bin/brew",
-                "/usr/local/bin/brew",
-                "/usr/bin/brew"
-            ]
-            return paths.first(where: { FileManager.default.isExecutableFile(atPath: $0) }) != nil
-            
+            let paths = ["/opt/homebrew/bin/brew", "/usr/local/bin/brew", "/usr/bin/brew"]
+            return paths.contains(where: { FileManager.default.isExecutableFile(atPath: $0) })
         case "kilocode":
-            // Check common npm global locations
-            let paths = [
-                "/opt/homebrew/bin/kilocode",
-                "/usr/local/bin/kilocode",
-                "/usr/bin/kilocode"
-            ]
-            return paths.first(where: { FileManager.default.isExecutableFile(atPath: $0) }) != nil
-            
+            let paths = ["/opt/homebrew/bin/kilocode", "/usr/local/bin/kilocode", "/usr/bin/kilocode"]
+            return paths.contains(where: { FileManager.default.isExecutableFile(atPath: $0) })
+        case "node":
+            let paths = ["/opt/homebrew/bin/node", "/usr/local/bin/node", "/usr/bin/node"]
+            return paths.contains(where: { FileManager.default.isExecutableFile(atPath: $0) })
         default:
             return false
         }
@@ -204,9 +212,11 @@ struct TerminalSetupView: View {
         isInstallingHomebrew = true
         let script = "/bin/bash -c \"$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)\""
         browser.terminalSendText?(script + "\r")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-            isInstallingHomebrew = false
-            checkInstalledTools()
+
+        // Poll for the brew command to appear instead of assuming completion
+        pollUntilInstalled(check: { self.checkCommandExistsInLoginShell("brew", shellPath: self.userShellPath) }) { installed in
+            self.isInstallingHomebrew = false
+            if installed { self.isHomebrewInstalled = true }
         }
     }
     
@@ -227,9 +237,10 @@ struct TerminalSetupView: View {
         // Try Homebrew first, fall back to manual installation
         let script = "brew install zsh-autosuggestions 2>/dev/null || (git clone https://github.com/zsh-users/zsh-autosuggestions ~/.zsh/zsh-autosuggestions && echo 'source ~/.zsh/zsh-autosuggestions/zsh-autosuggestions.zsh' >> ~/.zshrc && source ~/.zshrc)"
         browser.terminalSendText?(script + "\r")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-            isInstallingAutocomplete = false
-            checkInstalledTools()
+
+        pollUntilInstalled(check: { self.checkAutocompleteInstalled(for: self.currentShell) }) { installed in
+            self.isInstallingAutocomplete = false
+            if installed { self.isAutocompleteInstalled = true }
         }
     }
     
@@ -261,10 +272,29 @@ struct TerminalSetupView: View {
             """
             browser.terminalSendText?(script + "\r")
         }
-        
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-            isInstallingKilocode = false
-            checkInstalledTools()
+
+        pollUntilInstalled(check: { self.checkCommandExistsInLoginShell("kilocode", shellPath: self.userShellPath) }) { installed in
+            self.isInstallingKilocode = false
+            if installed { self.isKilocodeInstalled = true }
+        }
+    }
+
+    // MARK: - Helpers
+
+    /// Poll until `check()` returns true or timeout elapses.
+    private func pollUntilInstalled(check: @escaping () -> Bool, timeout: TimeInterval = 120, completion: @escaping (Bool) -> Void) {
+        DispatchQueue.global(qos: .utility).async {
+            let start = Date()
+            var delay: TimeInterval = 0.8
+            while Date().timeIntervalSince(start) < timeout {
+                if check() {
+                    DispatchQueue.main.async { completion(true) }
+                    return
+                }
+                Thread.sleep(forTimeInterval: delay)
+                delay = min(5.0, delay * 1.5)
+            }
+            DispatchQueue.main.async { completion(false) }
         }
     }
 }

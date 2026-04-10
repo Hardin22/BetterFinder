@@ -17,22 +17,24 @@ final class UpdateManager {
     // MARK: - Private Properties
     
     @ObservationIgnored private let updaterController: SPUStandardUpdaterController
+    @ObservationIgnored private var observerTokens: [Any] = []
     
     // MARK: - Initialization
     
     init() {
+        // Start the updater so its state is available immediately.
         updaterController = SPUStandardUpdaterController(
-            startingUpdater: false,
+            startingUpdater: true,
             updaterDelegate: nil,
             userDriverDelegate: nil
         )
-        
-        // Initialize published properties
+
+        // Initialize published properties from the underlying updater
         canCheckForUpdates = updaterController.updater.canCheckForUpdates
         automaticallyChecksForUpdates = updaterController.updater.automaticallyChecksForUpdates
         automaticallyDownloadsUpdates = updaterController.updater.automaticallyDownloadsUpdates
-        
-        // Observe updater changes
+
+        // Observe updater changes and retain tokens for later removal
         setupObservers()
     }
     
@@ -63,32 +65,28 @@ final class UpdateManager {
     // MARK: - Private Methods
     
     private func setupObservers() {
-        // Observe changes to updater properties
-        NotificationCenter.default.addObserver(
-            forName: .SUUpdaterDidRelaunchApplication,
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
+        // Observe changes to updater properties using block-based observers and retain tokens
+        let center = NotificationCenter.default
+
+        let token1 = center.addObserver(forName: NSApplication.didFinishRelaunchNotification, object: nil, queue: .main) { [weak self] _ in
             // App will relaunch after update
         }
-        
-        NotificationCenter.default.addObserver(
-            forName: .SUUpdaterDidFinishLoadingAppcast,
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
+
+        let token2 = center.addObserver(forName: SPUUpdater.updaterDidFinishLoadingAppCastNotification, object: updaterController.updater, queue: .main) { [weak self] _ in
             self?.lastUpdateCheckDate = Date()
+            // Sync canCheckForUpdates from the underlying updater in case it changed
+            self?.canCheckForUpdates = self?.updaterController.updater.canCheckForUpdates ?? false
         }
+
+        observerTokens.append(token1)
+        observerTokens.append(token2)
     }
     
     deinit {
-        NotificationCenter.default.removeObserver(self)
+        // Remove block-based observers using stored tokens
+        let center = NotificationCenter.default
+        for token in observerTokens {
+            center.removeObserver(token)
+        }
     }
-}
-
-// MARK: - Notification Names
-
-extension Notification.Name {
-    static let SUUpdaterDidRelaunchApplication = Notification.Name("SUUpdaterDidRelaunchApplication")
-    static let SUUpdaterDidFinishLoadingAppcast = Notification.Name("SUUpdaterDidFinishLoadingAppcast")
 }

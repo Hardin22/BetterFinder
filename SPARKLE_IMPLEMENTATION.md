@@ -98,7 +98,7 @@ Successfully implemented automatic update functionality for BetterFinder using [
 ### 1. Generate Ed25519 Keys
 
 ```bash
-cd /Users/lucabarrella/Documents/BetterFinder
+cd /path/to/BetterFinder
 bash bin/generate_keys.sh
 ```
 
