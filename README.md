@@ -37,7 +37,8 @@ BetterFinder is a file manager — it needs to read every folder on your system,
 14. [Global Hotkey](#14-global-hotkey)
 15. [macOS Integration](#15-macos-integration)
 16. [Architecture](#16-architecture)
-17. [Planned](#17-planned)
+17. [Smart Rename (Batch Rename)](#17-smart-rename-batch-rename)
+18. [Planned](#18-planned)
 
 ---
 
@@ -438,13 +439,77 @@ BetterFinder/
 
 ---
 
-## 17. Planned
+## 17. Smart Rename (Batch Rename)
+
+A powerful built-in batch rename tool for renaming multiple files at once. Select 2+ files, right-click → **"Rename…"** or press **`⌘⇧R`** to open the Smart Rename sheet.
+
+### Layout
+
+- **Left panel (~40%):** Rule Builder — drag-reorderable list of active rules
+- **Right panel (~60%):** Live Preview Table — shows original → proposed name for every file
+- **Status bar:** File count, renamed count, unchanged count, conflict count
+- **Preset toolbar:** Save and load named rule configurations
+
+### Available Rule Types
+
+Rules are applied left-to-right in order. Chain multiple rules for complex transformations.
+
+| # | Rule | Category | Description |
+|---|---|---|---|
+| 1 | **Replace Text** | Text | Find & replace (literal or regex with capture groups `$1`, `$2`) |
+| 2 | **Insert Text** | Text | Insert text at prefix, suffix, or a specific character index |
+| 3 | **Remove Range** | Text | Remove characters by position (supports negative indices from end) |
+| 4 | **Remove Characters** | Text | Strip whitespace, special chars, digits, or a custom set |
+| 5 | **Change Case** | Case | lowercase, UPPERCASE, Title Case, camelCase, snake_case, kebab-case |
+| 6 | **Add Number** | Numbering | Sequential number at prefix/suffix/index with start, step, zero-padding, separator |
+| 7 | **Sequential Name** | Numbering | **Replace entire filename** with base name + number (e.g., `IMG_0321` → `Week 1`) |
+| 8 | **Insert Date** | Date | Insert creation/modification/current date in any format (e.g., `yyyy-MM-dd`) |
+| 9 | **Insert Metadata** | Metadata | Insert EXIF (camera, lens, ISO), image dimensions, audio/video tags |
+| 10 | **Change Extension** | Extension | Change or remove the file extension |
+| 11 | **Truncate** | Truncation | Trim filename to max length, from start or end |
+
+### Sequential Name — Bulk Rename Use Case
+
+The **Sequential Name** rule is designed for renaming a batch of files to a completely new naming scheme:
+
+| Setting | Description | Default |
+|---|---|---|
+| **Name** | Base text for all files (e.g., "Week", "Screenshot", "Photo") | Week |
+| **Separator** | Character(s) between name and number (space, underscore, dash) | ` ` (space) |
+| **Start** | First number in the sequence | 1 |
+| **Step** | Increment between consecutive files | 1 |
+| **Pad** | Zero-pad numbers to N digits (e.g., 3 → 001, 002, 003) | 0 (no padding) |
+
+**Example:** Renaming `IMG_0321.png`, `IMG_0322.png`, `IMG_0323.png` with base name `Week`:
+
+```
+IMG_0321.png  →  Week 1.png
+IMG_0322.png  →  Week 2.png
+IMG_0323.png  →  Week 3.png
+```
+
+### Key Features
+
+| Feature | Description | Status |
+|---|---|---|
+| Live preview | Updates within 150ms of any rule change | ✅ |
+| Conflict detection | Red banner when two files would get the same name; Rename button disabled | ✅ |
+| Character diff highlighting | Changed characters highlighted in accent color in preview | ✅ |
+| Drag-reorder rules | Drag rules up/down to change application order | ✅ |
+| Enable/disable toggle | Eye icon to temporarily skip a rule without removing it | ✅ |
+| Presets | Save & load named rule configurations (stored in Application Support) | ✅ |
+| Single undo | One `⌘Z` undoes the entire batch rename | ✅ |
+| Safe rename | Checks for destination conflicts before each rename | ✅ |
+| All 14 unit tests passing | Replace, regex, case, numbering, date, truncate, conflicts | ✅ |
+
+---
+
+## 18. Planned
 
 | Feature | Notes |
 |---|---|
 | FSEvents file watcher | Auto-refresh pane when files change on disk |
 | Column header sorting | Click columns to sort by name / date / size / kind |
-| Batch rename | Regex / prefix / suffix / sequential numbering |
 | Folder diff & sync | Compare two panes, sync in either direction |
 | Size browser | Treemap / disk usage visualisation |
 | Git status badges | Modified/staged/untracked indicators on files in git repos |

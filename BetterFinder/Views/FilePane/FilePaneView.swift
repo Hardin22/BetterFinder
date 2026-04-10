@@ -101,6 +101,14 @@ struct FilePaneView: View {
         .onChange(of: browser.searchOptions) { _, _ in
             browser.performSearchIfNeeded(showHidden: appState.preferences.showHiddenFiles)
         }
+        .sheet(isPresented: Binding(
+            get: { browser.showSmartRename },
+            set: { browser.showSmartRename = $0 }
+        )) {
+            SmartRenameSheet(items: browser.smartRenameItems) {
+                browser.showSmartRename = false
+            }
+        }
     }
 
     // MARK: - Placeholder Views

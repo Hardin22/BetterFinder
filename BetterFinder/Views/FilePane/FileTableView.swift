@@ -624,8 +624,24 @@ final class Coordinator: NSObject, NSTableViewDataSource, NSTableViewDelegate {
 
             menu.addItem(.separator())
             menu.addItem(menuItem("Open in Terminal", #selector(openInTerminal), icon: "terminal"))
+
+            // ── Smart Rename (multi-selection) ────────────────────────────────
+            menu.addItem(.separator())
+            menu.addItem(menuItem("Rename…", #selector(smartRenameSelected),
+                                  icon: "pencil.and.list.clipboard", shortcut: prefs.shortcutSmartRename))
         }
         return menu
+    }
+
+    // MARK: - Smart Rename action
+
+    @objc private func smartRenameSelected() {
+        let selection = tableView.selectedRowIndexes.compactMap {
+            $0 < items.count ? items[$0] : nil
+        }
+        guard !selection.isEmpty else { return }
+        browser.smartRenameItems = selection
+        browser.showSmartRename  = true
     }
 
     // MARK: - Open With submenu
