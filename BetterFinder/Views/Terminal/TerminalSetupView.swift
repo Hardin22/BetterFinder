@@ -161,8 +161,16 @@ struct TerminalSetupView: View {
     
     private func installKilocode() {
         isInstallingKilocode = true
-        // Install Kilocode CLI via npm
-        let script = "npm install -g @kilocode/cli"
+        
+        // Check if Node.js is installed, if not install it via Homebrew
+        let script = """
+        if ! command -v node &> /dev/null; then
+            echo "Installing Node.js via Homebrew..."
+            brew install node
+        fi
+        npm install -g @kilocode/cli
+        """
+        
         browser.terminalSendText?(script + "\r")
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
             isInstallingKilocode = false
