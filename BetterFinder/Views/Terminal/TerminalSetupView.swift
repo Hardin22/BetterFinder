@@ -7,11 +7,11 @@ struct TerminalSetupView: View {
     
     @State private var isInstallingHomebrew = false
     @State private var isInstallingAutocomplete = false
-    @State private var isInstallingCopilot = false
+    @State private var isInstallingKilocode = false
     
     @State private var isHomebrewInstalled = false
     @State private var isAutocompleteInstalled = false
-    @State private var isCopilotInstalled = false
+    @State private var isKilocodeInstalled = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -46,13 +46,13 @@ struct TerminalSetupView: View {
                 )
                 
                 ToolRow(
-                    title: "Claude Code",
-                    description: "An AI coding assistant right in your terminal.",
+                    title: "Kilocode CLI",
+                    description: "Open-source AI coding assistant for your terminal.",
                     icon: "sparkles",
-                    isWorking: isInstallingCopilot,
-                    isInstalled: isCopilotInstalled,
+                    isWorking: isInstallingKilocode,
+                    isInstalled: isKilocodeInstalled,
                     action: {
-                        installCopilot()
+                        installKilocode()
                     }
                 )
             }
@@ -67,11 +67,29 @@ struct TerminalSetupView: View {
     
     private func checkInstalledTools() {
         isHomebrewInstalled = checkCommandExists("brew")
-        isAutocompleteInstalled = checkDirectoryExists("~/.zsh/zsh-autosuggestions")
-        isCopilotInstalled = checkCommandExists("claude-code")
+        isAutocompleteInstalled = checkAutocompleteInstalled()
+        isKilocodeInstalled = checkCommandExists("kilocode")
+    }
+    
+    private func checkAutocompleteInstalled() -> Bool {
+        // Check manual installation
+        if checkDirectoryExists("~/.zsh/zsh-autosuggestions") {
+            return true
+        }
+        
+        // Check Homebrew installation
+        let homebrewPaths = [
+            "/opt/homebrew/share/zsh-autosuggestions",
+            "/usr/local/share/zsh-autosuggestions",
+            "/opt/homebrew/share/zsh-autosuggestions/zsh-autosuggestions.zsh",
+            "/usr/local/share/zsh-autosuggestions/zsh-autosuggestions.zsh"
+        ]
+        
+        return homebrewPaths.first(where: { FileManager.default.fileExists(atPath: $0) }) != nil
     }
     
     private func checkCommandExists(_ command: String) -> Bool {
+        // First try with which
         let task = Process()
         task.launchPath = "/usr/bin/which"
         task.arguments = [command]
@@ -83,8 +101,34 @@ struct TerminalSetupView: View {
         do {
             try task.run()
             task.waitUntilExit()
-            return task.terminationStatus == 0
+            if task.terminationStatus == 0 {
+                return true
+            }
         } catch {
+            // Fall through to alternative checks
+        }
+        
+        // If which failed, try common installation paths
+        switch command {
+        case "brew":
+            // Check common Homebrew locations
+            let paths = [
+                "/opt/homebrew/bin/brew",
+                "/usr/local/bin/brew",
+                "/usr/bin/brew"
+            ]
+            return paths.first(where: { FileManager.default.isExecutableFile(atPath: $0) }) != nil
+            
+        case "kilocode":
+            // Check common npm global locations
+            let paths = [
+                "/opt/homebrew/bin/kilocode",
+                "/usr/local/bin/kilocode",
+                "/usr/bin/kilocode"
+            ]
+            return paths.first(where: { FileManager.default.isExecutableFile(atPath: $0) }) != nil
+            
+        default:
             return false
         }
     }
@@ -106,7 +150,8 @@ struct TerminalSetupView: View {
     
     private func installAutocomplete() {
         isInstallingAutocomplete = true
-        let script = "git clone https://github.com/zsh-users/zsh-autosuggestions ~/.zsh/zsh-autosuggestions && echo 'source ~/.zsh/zsh-autosuggestions/zsh-autosuggestions.zsh' >> ~/.zshrc && source ~/.zshrc"
+        // Try Homebrew first, fall back to manual installation
+        let script = "brew install zsh-autosuggestions 2>/dev/null || (git clone https://github.com/zsh-users/zsh-autosuggestions ~/.zsh/zsh-autosuggestions && echo 'source ~/.zsh/zsh-autosuggestions/zsh-autosuggestions.zsh' >> ~/.zshrc && source ~/.zshrc)"
         browser.terminalSendText?(script + "\r")
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
             isInstallingAutocomplete = false
@@ -114,12 +159,13 @@ struct TerminalSetupView: View {
         }
     }
     
-    private func installCopilot() {
-        isInstallingCopilot = true
-        let script = "npm install -g @anthropic-ai/claude-code"
+    private func installKilocode() {
+        isInstallingKilocode = true
+        // Install Kilocode CLI via npm
+        let script = "npm install -g @kilocode/cli"
         browser.terminalSendText?(script + "\r")
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-            isInstallingCopilot = false
+            isInstallingKilocode = false
             checkInstalledTools()
         }
     }
