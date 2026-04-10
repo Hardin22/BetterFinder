@@ -1,8 +1,53 @@
 import Foundation
+import AppKit
 import Observation
 
 @Observable
 final class AppPreferences {
+
+    // MARK: - External Terminal
+
+    enum ExternalTerminal: String, CaseIterable {
+        case terminal = "Terminal"
+        case iTerm2 = "iTerm"
+        case warp = "Warp"
+        case ghostty = "Ghostty"
+        case wezterm = "WezTerm"
+        case alacritty = "Alacritty"
+
+        var label: String { rawValue }
+
+        var bundleIdentifier: String {
+            switch self {
+            case .terminal: return "com.apple.Terminal"
+            case .iTerm2: return "com.googlecode.iterm2"
+            case .warp: return "dev.warp.Warp-Stable"
+            case .ghostty: return "com.mitchellh.ghostty"
+            case .wezterm: return "com.github.wez.wezterm"
+            case .alacritty: return "org.alacritty"
+            }
+        }
+
+        func open(url: URL) {
+            guard let appURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleIdentifier) else {
+                // Fallback to default terminal if the requested app is not installed
+                if self != .terminal {
+                    ExternalTerminal.terminal.open(url: url)
+                } else {
+                    NSWorkspace.shared.open(url)
+                }
+                return
+            }
+
+            let config = NSWorkspace.OpenConfiguration()
+            config.createsNewApplicationInstance = false
+            NSWorkspace.shared.open([url], withApplicationAt: appURL, configuration: config) { _, error in
+                if let error = error {
+                    print("Failed to open \(label): \(error.localizedDescription)")
+                }
+            }
+        }
+    }
 
     // MARK: - View
 
@@ -29,6 +74,9 @@ final class AppPreferences {
     }
     var openTerminalByDefault: Bool = false {
         didSet { ud.set(openTerminalByDefault, forKey: Keys.openTerminalByDefault) }
+    }
+    var externalTerminal: ExternalTerminal = .terminal {
+        didSet { ud.set(externalTerminal.rawValue, forKey: Keys.externalTerminal) }
     }
     var showPreviewPanel: Bool = false {
         didSet { ud.set(showPreviewPanel, forKey: Keys.showPreviewPanel) }
@@ -84,6 +132,21 @@ final class AppPreferences {
     var shortcutToggleTerminal: AppShortcut = .toggleTerminal {
         didSet { saveShortcut(shortcutToggleTerminal, forKey: Keys.shortcutToggleTerminal) }
     }
+    var shortcutClearTerminal: AppShortcut = .clearTerminal {
+        didSet { saveShortcut(shortcutClearTerminal, forKey: Keys.shortcutClearTerminal) }
+    }
+    var shortcutFocusTerminal: AppShortcut = .focusTerminal {
+        didSet { saveShortcut(shortcutFocusTerminal, forKey: Keys.shortcutFocusTerminal) }
+    }
+    var shortcutTerminalFontUp: AppShortcut = .terminalFontUp {
+        didSet { saveShortcut(shortcutTerminalFontUp, forKey: Keys.shortcutTerminalFontUp) }
+    }
+    var shortcutTerminalFontDown: AppShortcut = .terminalFontDown {
+        didSet { saveShortcut(shortcutTerminalFontDown, forKey: Keys.shortcutTerminalFontDown) }
+    }
+    var shortcutTerminalFontReset: AppShortcut = .terminalFontReset {
+        didSet { saveShortcut(shortcutTerminalFontReset, forKey: Keys.shortcutTerminalFontReset) }
+    }
     var shortcutToggleDualPane: AppShortcut = .toggleDualPane {
         didSet { saveShortcut(shortcutToggleDualPane, forKey: Keys.shortcutToggleDualPane) }
     }
@@ -130,6 +193,7 @@ final class AppPreferences {
         showStatusBar     = ud.object(forKey: Keys.showStatusBar) as? Bool ?? true
         startInDualPane        = ud.bool(forKey: Keys.startInDualPane)
         openTerminalByDefault  = ud.bool(forKey: Keys.openTerminalByDefault)
+        externalTerminal       = ExternalTerminal(rawValue: ud.string(forKey: Keys.externalTerminal) ?? "") ?? .terminal
         showPreviewPanel       = ud.bool(forKey: Keys.showPreviewPanel)
         maxRecentFolders       = ud.object(forKey: Keys.maxRecentFolders) as? Int ?? 10
         defaultSortColumn    = SortColumn(rawValue: ud.string(forKey: Keys.defaultSortColumn) ?? "") ?? .dateModified
@@ -146,6 +210,11 @@ final class AppPreferences {
         shortcutTrash         = loadShortcut(forKey: Keys.shortcutTrash)         ?? .trash
         shortcutToggleHidden  = loadShortcut(forKey: Keys.shortcutToggleHidden)  ?? .toggleHidden
         shortcutToggleTerminal = loadShortcut(forKey: Keys.shortcutToggleTerminal) ?? .toggleTerminal
+        shortcutClearTerminal   = loadShortcut(forKey: Keys.shortcutClearTerminal)   ?? .clearTerminal
+        shortcutFocusTerminal   = loadShortcut(forKey: Keys.shortcutFocusTerminal)   ?? .focusTerminal
+        shortcutTerminalFontUp   = loadShortcut(forKey: Keys.shortcutTerminalFontUp)   ?? .terminalFontUp
+        shortcutTerminalFontDown = loadShortcut(forKey: Keys.shortcutTerminalFontDown) ?? .terminalFontDown
+        shortcutTerminalFontReset = loadShortcut(forKey: Keys.shortcutTerminalFontReset) ?? .terminalFontReset
         shortcutToggleDualPane = loadShortcut(forKey: Keys.shortcutToggleDualPane) ?? .toggleDualPane
         shortcutCopyToPane    = loadShortcut(forKey: Keys.shortcutCopyToPane)    ?? .copyToPane
         shortcutMoveToPane    = loadShortcut(forKey: Keys.shortcutMoveToPane)    ?? .moveToPane
@@ -228,6 +297,7 @@ final class AppPreferences {
         static let showStatusBar         = "showStatusBar"
         static let startInDualPane       = "startInDualPane"
         static let openTerminalByDefault = "openTerminalByDefault"
+        static let externalTerminal      = "externalTerminal"
         static let defaultSearchScope     = "defaultSearchScope"
         static let defaultSearchMatchMode = "defaultSearchMatchMode"
         static let defaultSearchFileKind  = "defaultSearchFileKind"
@@ -237,6 +307,11 @@ final class AppPreferences {
         static let shortcutTrash          = "shortcutTrash"
         static let shortcutToggleHidden   = "shortcutToggleHidden"
         static let shortcutToggleTerminal = "shortcutToggleTerminal"
+        static let shortcutClearTerminal   = "shortcutClearTerminal"
+        static let shortcutFocusTerminal   = "shortcutFocusTerminal"
+        static let shortcutTerminalFontUp   = "shortcutTerminalFontUp"
+        static let shortcutTerminalFontDown = "shortcutTerminalFontDown"
+        static let shortcutTerminalFontReset  = "shortcutTerminalFontReset"
         static let shortcutToggleDualPane = "shortcutToggleDualPane"
         static let shortcutCopyToPane     = "shortcutCopyToPane"
         static let shortcutMoveToPane     = "shortcutMoveToPane"

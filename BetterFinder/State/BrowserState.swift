@@ -32,6 +32,7 @@ final class BrowserState {
     // MARK: - Terminal
 
     var showTerminal        = false
+    var showTerminalSetup   = false
     var terminalHeight:   CGFloat = 220
     var terminalFontSize: CGFloat = 13
     var terminalSyncEnabled = true
@@ -101,9 +102,9 @@ final class BrowserState {
             return
         }
         let capturedVolumeURL = volumeURL
-        let task = Task.detached(priority: .userInitiated) { [weak self] in
+        let task = Task.detached(priority: .userInitiated) {
             let isEjectable = await volumeService.isEjectableVolumeAsync(capturedVolumeURL)
-            await MainActor.run {
+            await MainActor.run { [weak self] in
                 guard let self, !Task.isCancelled,
                       self.currentVolumeURL == capturedVolumeURL else { return }
                 self.currentVolumeIsEjectableCache = isEjectable
@@ -302,9 +303,17 @@ final class BrowserState {
 
         if let target = pendingRevealURL {
             pendingRevealURL = nil
-            if let item = items.first(where: { $0.url.standardizedFileURL == target.standardizedFileURL }) {
+            
+            // Try exact path match first, then fall back to case-insensitive
+            if let item = items.first(where: { $0.url.path == target.path }) {
                 selectedItems = [item.id]
                 lastSelectedURL = target
+            } else {
+                let targetPath = target.path.lowercased()
+                if let item = items.first(where: { $0.url.path.lowercased() == targetPath }) {
+                    selectedItems = [item.id]
+                    lastSelectedURL = target
+                }
             }
         }
     }

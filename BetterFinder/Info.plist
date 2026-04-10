@@ -13,7 +13,7 @@
 	<key>CFBundleName</key>
 	<string>$(PRODUCT_NAME)</string>
 	<key>CFBundlePackageType</key>
-	<string>$(PACKAGE_TYPE)</string>
+	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
 	<string>$(MARKETING_VERSION)</string>
 	<key>CFBundleVersion</key>
@@ -24,6 +24,26 @@
 	<string></string>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
+
+	<!-- Sparkle Auto-Update Configuration -->
+	<key>SUFeedURL</key>
+	<string>https://github.com/LucaBarrella/BetterFinder/releases/latest/download/appcast.xml</string>
+	<key>SUPublicEDKey</key>
+	<!-- IMPORTANT: Replace this placeholder with your actual Ed25519 public key before releasing -->
+	<!-- Generate keys using bin/generate_keys.sh and paste the public key here -->
+	<string>YOUR_PUBLIC_ED25519_KEY_HERE</string>
+	<key>SUEnableAutomaticChecks</key>
+	<true/>
+	<key>SUAutomaticallyUpdate</key>
+	<false/>
+	<key>SUScheduledCheckInterval</key>
+	<integer>86400</integer>
+	<key>SUAllowsPrompts</key>
+	<true/>
+	<key>SUShowReleaseNotes</key>
+	<true/>
+	<key>SUMinimumSystemVersion</key>
+	<string>15.0</string>
 
 	<!-- Declare support for opening folders so Launch Services accepts us
 	     as a valid handler when the user sets us as default file viewer. -->

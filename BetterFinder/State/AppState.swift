@@ -68,7 +68,7 @@ final class AppState {
         guard alert.runModal() == .alertFirstButtonReturn else { return }
 
         let destination = dst.currentURL
-        let showHidden  = preferences.showHiddenFiles
+        _ = preferences.showHiddenFiles
 
         if removing {
             let pairs = sel.map { (from: $0.url, to: destination.appendingPathComponent($0.name)) }
@@ -628,24 +628,32 @@ final class AppState {
         if favoritesController.roots.contains(where: { $0.url == url }) { return }
 
         let node = TreeNode(url: url, kind: .folder)
-        var newRoots = favoritesController.roots + [node]
+        let newRoots = favoritesController.roots + [node]
         favoritesController.setRoots(newRoots)
         saveFavorites()
     }
 
     /// Remove a favorite by ID
     func removeFavorite(id: UUID) {
-        var newRoots = favoritesController.roots.filter { $0.id != id }
+        let newRoots = favoritesController.roots.filter { $0.id != id }
         favoritesController.setRoots(newRoots)
         saveFavorites()
     }
 
     /// Update custom properties for a favorite
+    /// Use updateFavoriteClearIcon to explicitly clear the icon
     func updateFavorite(id: UUID, customIcon: String? = nil, customColor: Color? = nil, isAlias: Bool? = nil) {
         guard let node = favoritesController.roots.first(where: { $0.id == id }) else { return }
-        if let icon = customIcon { node.customIcon = icon }
+        if customIcon != nil { node.customIcon = customIcon }
         if let color = customColor { node.customColor = color }
         if let alias = isAlias { node.isAlias = alias }
+        saveFavorites()
+    }
+    
+    /// Explicitly clear the custom icon (reset to default)
+    func updateFavoriteClearIcon(id: UUID) {
+        guard let node = favoritesController.roots.first(where: { $0.id == id }) else { return }
+        node.customIcon = nil
         saveFavorites()
     }
 
@@ -748,7 +756,6 @@ final class AppState {
         if isDir.boolValue {
             browser.navigate(to: url)
         } else {
-            // Navigate to parent and mark the file for selection once loaded
             let parent = url.deletingLastPathComponent()
             browser.pendingRevealURL = url
             browser.navigate(to: parent)
