@@ -51,7 +51,7 @@ final class GlobalHotkeyManager {
         }
 
         let modifiers = carbonModifiers(from: NSEvent.ModifierFlags(rawValue: shortcut.modifiers))
-        var id = EventHotKeyID(signature: fourCC("BFnd"), id: 1)
+        let id = EventHotKeyID(signature: fourCC("BFnd"), id: 1)
         RegisterEventHotKey(
             UInt32(shortcut.keyCode),
             modifiers,

@@ -1,12 +1,15 @@
-import Foundation
+@preconcurrency import Foundation
 import AppKit
 import UniformTypeIdentifiers
+@preconcurrency import Foundation
+
+final class NSObjectRefHolder: @unchecked(Sendable) {
+    let value: NSMetadataQuery
+    init(_ v: NSMetadataQuery) { value = v }
+}
 
 /// Performs async file searches for non-current-folder scopes.
-/// Current-folder filtering is handled synchronously in BrowserState.filteredItems.
 enum SearchService {
-
-    // MARK: - Public entry point
 
     static func search(
         query: String,
@@ -43,21 +46,27 @@ enum SearchService {
             var results: [FileItem] = []
             let fmOpts: FileManager.DirectoryEnumerationOptions =
                 showHidden ? [] : [.skipsHiddenFiles]
-
-            guard let enumerator = FileManager.default.enumerator(
-                at: root,
-                includingPropertiesForKeys: resourceKeys,
-                options: fmOpts
-            ) else { return [] }
-
-            for case let url as URL in enumerator {
-                guard !Task.isCancelled else { break }
-                guard textMatches(url.lastPathComponent, query: query, mode: options.matchMode),
-                      kindMatches(url, kind: options.fileKind)
-                else { continue }
-                if let item = makeFileItem(url: url) { results.append(item) }
-                if results.count >= 1_000 { break }   // safety cap
+            let fileManager = FileManager.default
+            
+            func traverse(_ url: URL) async {
+                guard results.count < 1_000, !Task.isCancelled else { return }
+                let resourceKeys = await Set(Self.resourceKeys)
+                if let items = try? fileManager.contentsOfDirectory(at: url, includingPropertiesForKeys: Array(resourceKeys), options: fmOpts) {
+                    for entry in items {
+                        guard results.count < 1_000, !Task.isCancelled else { break }
+                        if await textMatches(entry.lastPathComponent, query: query, mode: options.matchMode),
+                           await kindMatches(entry, kind: options.fileKind),
+                           let item = await makeFileItem(url: entry) {
+                            results.append(item)
+                        }
+                        // Recurse into directories if necessary
+                        if ((try? entry.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) ?? false) {
+                            await traverse(entry)
+                        }
+                    }
+                }
             }
+            await traverse(root)
             return results
         }.value
     }
@@ -77,20 +86,20 @@ enum SearchService {
         mq.sortDescriptors = [NSSortDescriptor(key: NSMetadataItemFSNameKey, ascending: true)]
 
         return await withCheckedContinuation { (continuation: CheckedContinuation<[FileItem], Never>) in
-            var observer: NSObjectProtocol?
+            @preconcurrency let mqRef = NSObjectRefHolder(mq)
+            var observer: NSObjectProtocol? = nil
             observer = NotificationCenter.default.addObserver(
                 forName: .NSMetadataQueryDidFinishGathering,
-                object: mq,
+                object: nil,
                 queue: .main
-            ) { _ in
-                mq.stop()
-                if let obs = observer {
-                    NotificationCenter.default.removeObserver(obs)
-                    observer = nil
+            ) { [_mqRef = mqRef, observer] _ in
+                _mqRef.value.stop()
+                if let observer = observer {
+                    NotificationCenter.default.removeObserver(observer)
                 }
                 var results: [FileItem] = []
-                for i in 0 ..< mq.resultCount {
-                    guard let md   = mq.result(at: i) as? NSMetadataItem,
+                for i in 0 ..< _mqRef.value.resultCount {
+                    guard let md   = _mqRef.value.result(at: i) as? NSMetadataItem,
                           let path = md.value(forAttribute: NSMetadataItemPathKey) as? String
                     else { continue }
                     let url = URL(fileURLWithPath: path)
@@ -99,7 +108,7 @@ enum SearchService {
                 }
                 continuation.resume(returning: results)
             }
-            mq.start()
+            mqRef.value.start()
         }
     }
 

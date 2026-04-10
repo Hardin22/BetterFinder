@@ -102,9 +102,9 @@ final class BrowserState {
             return
         }
         let capturedVolumeURL = volumeURL
-        let task = Task.detached(priority: .userInitiated) { [weak self] in
+        let task = Task.detached(priority: .userInitiated) {
             let isEjectable = await volumeService.isEjectableVolumeAsync(capturedVolumeURL)
-            await MainActor.run {
+            await MainActor.run { [weak self] in
                 guard let self, !Task.isCancelled,
                       self.currentVolumeURL == capturedVolumeURL else { return }
                 self.currentVolumeIsEjectableCache = isEjectable

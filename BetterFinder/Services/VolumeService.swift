@@ -1,7 +1,7 @@
 @preconcurrency import Foundation
 
-private let DISK_UTIL_TIMEOUT_SECONDS: TimeInterval = 10
-private let MAX_OUTPUT_BYTES = 8192
+private nonisolated let DISK_UTIL_TIMEOUT_SECONDS: TimeInterval = 10
+private nonisolated let MAX_OUTPUT_BYTES = 8192
 
 enum VolumeError: Error, LocalizedError {
     case notEjectable
@@ -191,39 +191,42 @@ final class VolumeService: VolumeServiceProtocol {
         }
     }
 
-    private static nonisolated func readStreamedOutput(from fileHandle: FileHandle) async -> String? {
+    @preconcurrency private static func readStreamedOutput(from fileHandle: FileHandle) async -> String? {
         await withCheckedContinuation { (continuation: CheckedContinuation<String?, Never>) in
-            var buffer = Data()
+            let buffer = Protected(Data())
+            let didResume = Protected(false)
             let maxBytes = MAX_OUTPUT_BYTES
             let timeoutNanos = UInt64(DISK_UTIL_TIMEOUT_SECONDS * 1_000_000_000)
 
-            let syncQueue = DispatchQueue(label: "BetterFinder.VolumeService.readStreamedOutput")
-            var didResume = false
-
-            func finishWith(_ data: Data) {
-                syncQueue.sync {
-                    guard !didResume else { return }
-                    didResume = true
-                    fileHandle.readabilityHandler = nil
-                    let truncated = data.prefix(maxBytes)
-                    let str = String(data: Data(truncated), encoding: .utf8)?
-                        .trimmingCharacters(in: .whitespacesAndNewlines)
-                    continuation.resume(returning: str)
+            let finishWith: @Sendable (Data) -> Void = { data in
+                let shouldResume = didResume.withLock { value -> Bool in
+                    if value { return false }
+                    value = true
+                    return true
                 }
+                guard shouldResume else { return }
+                
+                fileHandle.readabilityHandler = nil
+                let truncated = data.prefix(maxBytes)
+                let str = String(data: Data(truncated), encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
+                continuation.resume(returning: str)
             }
 
-            let handler: (FileHandle) -> Void = { handle in
+            let handler: @Sendable (FileHandle) -> Void = { handle in
                 let data = handle.availableData
                 if data.isEmpty {
-                    let current = syncQueue.sync { buffer }
+                    let current = buffer.withLock { $0 }
                     finishWith(current)
                     return
                 }
-                syncQueue.sync { buffer.append(data) }
-                let shouldFlush = syncQueue.sync { buffer.count >= maxBytes }
+                
+                let (currentBuffer, shouldFlush) = buffer.withLock { value -> (Data, Bool) in
+                    value.append(data)
+                    return (value, value.count >= maxBytes)
+                }
+                
                 if shouldFlush {
-                    let current = syncQueue.sync { buffer }
-                    finishWith(current)
+                    finishWith(currentBuffer)
                 }
             }
 
@@ -231,10 +234,24 @@ final class VolumeService: VolumeServiceProtocol {
 
             Task.detached {
                 try? await Task.sleep(nanoseconds: timeoutNanos)
-                let current = syncQueue.sync { buffer }
+                let current = buffer.withLock { $0 }
                 finishWith(current)
             }
         }
     }
 }
 
+final class Protected<T>: @unchecked Sendable {
+    nonisolated(unsafe) private var _value: T
+    private let lock = NSLock()
+
+    nonisolated init(_ value: T) {
+        self._value = value
+    }
+
+    nonisolated func withLock<R>(_ body: (inout T) -> R) -> R {
+        lock.lock()
+        defer { lock.unlock() }
+        return body(&_value)
+    }
+}

@@ -20,16 +20,18 @@ struct MarkdownPreviewView: NSViewRepresentable {
     func makeCoordinator() -> Coordinator { Coordinator() }
     
     private func loadContent(into webView: WKWebView) {
-        Task.detached(priority: .userInitiated) { [weak webView] in
+        let url = self.url
+        Task.detached(priority: .userInitiated) {
             guard let content = try? String(contentsOf: url, encoding: .utf8) else {
-                await MainActor.run {
-                    webView?.loadHTMLString("<pre>Error loading file</pre>", baseURL: nil)
+                let html = "<pre>Error loading file</pre>"
+                _ = await MainActor.run {
+                    webView.loadHTMLString(html, baseURL: nil)
                 }
                 return
             }
-            let html = Self.wrapInHTML(content)
-            await MainActor.run {
-                webView?.loadHTMLString(html, baseURL: nil)
+            let html = await Self.wrapInHTML(content)
+            _ = await MainActor.run {
+                webView.loadHTMLString(html, baseURL: nil)
             }
         }
     }

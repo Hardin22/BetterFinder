@@ -68,7 +68,7 @@ final class AppState {
         guard alert.runModal() == .alertFirstButtonReturn else { return }
 
         let destination = dst.currentURL
-        let showHidden  = preferences.showHiddenFiles
+        _ = preferences.showHiddenFiles
 
         if removing {
             let pairs = sel.map { (from: $0.url, to: destination.appendingPathComponent($0.name)) }
@@ -628,14 +628,14 @@ final class AppState {
         if favoritesController.roots.contains(where: { $0.url == url }) { return }
 
         let node = TreeNode(url: url, kind: .folder)
-        var newRoots = favoritesController.roots + [node]
+        let newRoots = favoritesController.roots + [node]
         favoritesController.setRoots(newRoots)
         saveFavorites()
     }
 
     /// Remove a favorite by ID
     func removeFavorite(id: UUID) {
-        var newRoots = favoritesController.roots.filter { $0.id != id }
+        let newRoots = favoritesController.roots.filter { $0.id != id }
         favoritesController.setRoots(newRoots)
         saveFavorites()
     }

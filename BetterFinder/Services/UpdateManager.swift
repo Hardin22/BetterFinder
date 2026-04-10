@@ -1,4 +1,5 @@
 import Foundation
+import AppKit
 import Sparkle
 import Observation
 
@@ -65,17 +66,24 @@ final class UpdateManager {
     // MARK: - Private Methods
     
     private func setupObservers() {
-        // Observe changes to updater properties using block-based observers and retain tokens
         let center = NotificationCenter.default
+        let updater = updaterController.updater
 
-        let token1 = center.addObserver(forName: NSApplication.didFinishRelaunchNotification, object: nil, queue: .main) { [weak self] _ in
-            // App will relaunch after update
+        let token1 = center.addObserver(forName: NSNotification.Name("SPUUpdaterDidChangeCanCheckForUpdates"), object: updater, queue: .main) { [weak self] _ in
+            guard let self else { return }
+            let updater = self.updaterController.updater
+            Task { @MainActor in
+                self.canCheckForUpdates = updater.canCheckForUpdates
+            }
         }
-
-        let token2 = center.addObserver(forName: SPUUpdater.updaterDidFinishLoadingAppCastNotification, object: updaterController.updater, queue: .main) { [weak self] _ in
-            self?.lastUpdateCheckDate = Date()
-            // Sync canCheckForUpdates from the underlying updater in case it changed
-            self?.canCheckForUpdates = self?.updaterController.updater.canCheckForUpdates ?? false
+        
+        let token2 = center.addObserver(forName: NSNotification.Name("SUUpdaterDidFinishLoadingAppCast"), object: updater, queue: .main) { [weak self] _ in
+            guard let self else { return }
+            let updater = self.updaterController.updater
+            Task { @MainActor in
+                self.lastUpdateCheckDate = Date()
+                self.canCheckForUpdates = updater.canCheckForUpdates
+            }
         }
 
         observerTokens.append(token1)
