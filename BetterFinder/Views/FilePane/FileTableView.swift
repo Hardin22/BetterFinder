@@ -593,7 +593,8 @@ final class Coordinator: NSObject, NSTableViewDataSource, NSTableViewDelegate {
                 menu.addItem(menuItem(label, #selector(openInOtherPane),
                                       icon: "rectangle.split.2x1"))
             }
-            menu.addItem(menuItem("Open in Terminal", #selector(openInTerminal), icon: "terminal"))
+            menu.addItem(menuItem("Open in Terminal Drawer", #selector(openInTerminalDrawer), icon: "terminal"))
+            menu.addItem(menuItem("Open in \(prefs.externalTerminal.label)", #selector(openInExternalTerminal), icon: "macwindow"))
 
         } else {
             // ── Multi-selection ───────────────────────────────────────────────
@@ -623,7 +624,8 @@ final class Coordinator: NSObject, NSTableViewDataSource, NSTableViewDelegate {
             menu.addItem(menuItem("Share…",          #selector(shareFiles),  icon: "square.and.arrow.up"))
 
             menu.addItem(.separator())
-            menu.addItem(menuItem("Open in Terminal", #selector(openInTerminal), icon: "terminal"))
+            menu.addItem(menuItem("Open in Terminal Drawer", #selector(openInTerminalDrawer), icon: "terminal"))
+            menu.addItem(menuItem("Open in \(prefs.externalTerminal.label)", #selector(openInExternalTerminal), icon: "macwindow"))
         }
         return menu
     }
@@ -671,7 +673,8 @@ final class Coordinator: NSObject, NSTableViewDataSource, NSTableViewDelegate {
             menu.addItem(menuItem(label, #selector(pasteAction), icon: "clipboard"))
         }
         menu.addItem(.separator())
-        menu.addItem(menuItem("Open in Terminal", #selector(openInTerminal), icon: "terminal"))
+        menu.addItem(menuItem("Open in Terminal Drawer", #selector(openInTerminalDrawer), icon: "terminal"))
+        menu.addItem(menuItem("Open in \(appState.preferences.externalTerminal.label)", #selector(openInExternalTerminal), icon: "macwindow"))
         return menu
     }
 
@@ -680,7 +683,7 @@ final class Coordinator: NSObject, NSTableViewDataSource, NSTableViewDelegate {
     @objc private func cutSelected()     { activateThisPane(); appState.cutSelectedItems() }
     @objc private func pasteAction()     { activateThisPane(); appState.pasteIntoActivePane() }
 
-    @objc private func openInTerminal() {
+    @objc private func openInTerminalDrawer() {
         // If a single file is selected, open the terminal in its parent folder.
         // For folders or empty-space, open the terminal in the current browser folder.
         let targetURL: URL
@@ -699,6 +702,22 @@ final class Coordinator: NSObject, NSTableViewDataSource, NSTableViewDelegate {
         if browser.currentURL != targetURL { browser.navigate(to: targetURL) }
         browser.showTerminal = true
         browser.terminalChangeDirectory?(targetURL)
+    }
+
+    @objc private func openInExternalTerminal() {
+        let targetURL: URL
+        if let idx = tableView.selectedRowIndexes.first,
+           idx < items.count,
+           !items[idx].isDirectory {
+            targetURL = items[idx].url.deletingLastPathComponent()
+        } else if let idx = tableView.selectedRowIndexes.first,
+                  idx < items.count {
+            targetURL = items[idx].url
+        } else {
+            targetURL = browser.currentURL
+        }
+        appState.preferences.externalTerminal.open(url: targetURL)
+
     }
 
     private func menuItem(

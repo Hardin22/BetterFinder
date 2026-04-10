@@ -4,6 +4,7 @@ import SwiftUI
 
 struct PreferencesView: View {
     @Environment(AppState.self) private var appState
+    @Environment(UpdateManager.self) private var updateManager
 
     var body: some View {
         TabView {
@@ -13,6 +14,8 @@ struct PreferencesView: View {
                 .tabItem { Label("Search", systemImage: "magnifyingglass") }
             ShortcutsPrefsTab()
                 .tabItem { Label("Shortcuts", systemImage: "keyboard") }
+            UpdatesPreferencesView(updateManager: updateManager)
+                .tabItem { Label("Updates", systemImage: "arrow.down.circle") }
         }
         .environment(appState)
         .frame(width: 480, height: 520)
@@ -70,6 +73,14 @@ private struct GeneralPrefsTab: View {
                 Toggle("Start in dual-pane mode",        isOn: $prefs.startInDualPane)
                 Toggle("Open terminal panel by default", isOn: $prefs.openTerminalByDefault)
                 Toggle("Show preview panel by default",  isOn: $prefs.showPreviewPanel)
+            }
+            Section("Terminal") {
+                Picker("External Terminal", selection: $prefs.externalTerminal) {
+                    ForEach(AppPreferences.ExternalTerminal.allCases, id: \.self) { term in
+                        Text(term.label).tag(term)
+                    }
+                }
+                .pickerStyle(.menu)
             }
             Section("Recents") {
                 Stepper(
@@ -146,6 +157,8 @@ private struct ShortcutsPrefsTab: View {
             Section("View") {
                 shortcutRow("Toggle Hidden Files", shortcut: $prefs.shortcutToggleHidden,   default: .toggleHidden)
                 shortcutRow("Toggle Terminal",     shortcut: $prefs.shortcutToggleTerminal, default: .toggleTerminal)
+                shortcutRow("Clear Terminal",      shortcut: $prefs.shortcutClearTerminal,   default: .clearTerminal)
+                shortcutRow("Focus Terminal",      shortcut: $prefs.shortcutFocusTerminal,   default: .focusTerminal)
                 shortcutRow("Toggle Dual Pane",    shortcut: $prefs.shortcutToggleDualPane, default: .toggleDualPane)
             }
             Section("Global Hotkey") {

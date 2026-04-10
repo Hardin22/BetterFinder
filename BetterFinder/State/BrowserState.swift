@@ -32,6 +32,7 @@ final class BrowserState {
     // MARK: - Terminal
 
     var showTerminal        = false
+    var showTerminalSetup   = false
     var terminalHeight:   CGFloat = 220
     var terminalFontSize: CGFloat = 13
     var terminalSyncEnabled = true
@@ -302,7 +303,10 @@ final class BrowserState {
 
         if let target = pendingRevealURL {
             pendingRevealURL = nil
-            if let item = items.first(where: { $0.url.standardizedFileURL == target.standardizedFileURL }) {
+            
+            // Use case-insensitive path comparison for better matching
+            let targetPath = target.path.lowercased()
+            if let item = items.first(where: { $0.url.path.lowercased() == targetPath }) {
                 selectedItems = [item.id]
                 lastSelectedURL = target
             }

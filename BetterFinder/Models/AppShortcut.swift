@@ -34,6 +34,11 @@ struct AppShortcut: Codable, Equatable, Hashable {
     static let trash        = AppShortcut(keyCode: 51,  modifiers: mod(.command))
     static let toggleHidden = AppShortcut(keyCode: 47,  modifiers: mod(.command, .shift))
     static let toggleTerminal = AppShortcut(keyCode: 118, modifiers: 0)  // F4
+    static let clearTerminal   = AppShortcut(keyCode: 40,  modifiers: mod(.command))  // ⌘K
+    static let focusTerminal   = AppShortcut(keyCode: 17,  modifiers: mod(.command, .shift))  // ⌘⇧T (keyCode 17 = T)
+    static let terminalFontUp     = AppShortcut(keyCode: 24,  modifiers: mod(.command, .shift))  // ⌘⇧+ (= equals key)
+    static let terminalFontDown   = AppShortcut(keyCode: 27,  modifiers: mod(.command, .shift))  // ⌘⇧- 
+    static let terminalFontReset  = AppShortcut(keyCode: 29,  modifiers: mod(.command, .shift))  // ⌘⇧0
     static let toggleDualPane = AppShortcut(keyCode: 2,  modifiers: mod(.command))   // ⌘D
     static let copyToPane   = AppShortcut(keyCode: 96,  modifiers: 0)    // F5
     static let moveToPane   = AppShortcut(keyCode: 97,  modifiers: 0)    // F6

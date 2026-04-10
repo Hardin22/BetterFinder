@@ -37,6 +37,25 @@ jobs:
           APPLE_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
           TEAM_ID: ${{ secrets.TEAM_ID }}
 
+      - name: Install Sparkle CLI
+        run: |
+          brew install sparkle
+
+      - name: Generate Appcast
+        run: |
+          generate_appcast build/ \
+            --download-url-prefix https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/ \
+            --output build/appcast.xml
+
+      - name: Sign Appcast
+        run: |
+          # Write the private key to a temporary file with proper PEM format
+          echo "${{ secrets.SPARKLE_PRIVATE_KEY }}" > /tmp/sparkle_private_key.pem
+          sign_update build/appcast.xml \
+            --private-key-path /tmp/sparkle_private_key.pem
+          # Clean up the temporary key file
+          rm /tmp/sparkle_private_key.pem
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
@@ -51,6 +70,17 @@ jobs:
             4. Relaunch the app after granting access
 
             > **macOS requirement:** macOS 15 Sequoia or later · Apple Silicon (arm64)
-          files: build/BetterFinder-${{ env.VERSION }}.dmg
+
+            ## What's New
+
+            BetterFinder now includes automatic update checking powered by Sparkle!
+
+            - ✅ Automatic updates every 24 hours
+            - ✅ Manual update check in BetterFinder → Check for Updates…
+            - ✅ All updates are signed and verified before installation
+            - ✅ Configure update behavior in Settings → Updates
+          files: |
+            build/BetterFinder-${{ env.VERSION }}.dmg
+            build/appcast.xml
           draft: false
           prerelease: false

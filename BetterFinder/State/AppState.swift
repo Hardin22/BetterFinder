@@ -641,11 +641,19 @@ final class AppState {
     }
 
     /// Update custom properties for a favorite
+    /// Use updateFavoriteClearIcon to explicitly clear the icon
     func updateFavorite(id: UUID, customIcon: String? = nil, customColor: Color? = nil, isAlias: Bool? = nil) {
         guard let node = favoritesController.roots.first(where: { $0.id == id }) else { return }
-        if let icon = customIcon { node.customIcon = icon }
+        if customIcon != nil { node.customIcon = customIcon }
         if let color = customColor { node.customColor = color }
         if let alias = isAlias { node.isAlias = alias }
+        saveFavorites()
+    }
+    
+    /// Explicitly clear the custom icon (reset to default)
+    func updateFavoriteClearIcon(id: UUID) {
+        guard let node = favoritesController.roots.first(where: { $0.id == id }) else { return }
+        node.customIcon = nil
         saveFavorites()
     }
 
@@ -748,7 +756,6 @@ final class AppState {
         if isDir.boolValue {
             browser.navigate(to: url)
         } else {
-            // Navigate to parent and mark the file for selection once loaded
             let parent = url.deletingLastPathComponent()
             browser.pendingRevealURL = url
             browser.navigate(to: parent)
