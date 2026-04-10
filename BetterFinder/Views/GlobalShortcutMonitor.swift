@@ -70,5 +70,8 @@ enum GlobalShortcutAction {
     case toggleTerminal
     case clearTerminal
     case focusTerminal
+    case terminalFontUp
+    case terminalFontDown
+    case terminalFontReset
     case toggleDualPane
 }

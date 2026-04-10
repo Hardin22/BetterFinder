@@ -23,6 +23,12 @@ struct ContentView: View {
                 appState.activeBrowser.terminalSendText?("clear\r")
             case .focusTerminal:
                 appState.activeBrowser.showTerminal = true
+            case .terminalFontUp:
+                appState.activeBrowser.terminalFontSize = min(24, appState.activeBrowser.terminalFontSize + 1)
+            case .terminalFontDown:
+                appState.activeBrowser.terminalFontSize = max(9, appState.activeBrowser.terminalFontSize - 1)
+            case .terminalFontReset:
+                appState.activeBrowser.terminalFontSize = 13
             case .toggleDualPane:
                 appState.isDualPane.toggle()
             }

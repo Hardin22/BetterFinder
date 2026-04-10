@@ -138,6 +138,15 @@ final class AppPreferences {
     var shortcutFocusTerminal: AppShortcut = .focusTerminal {
         didSet { saveShortcut(shortcutFocusTerminal, forKey: Keys.shortcutFocusTerminal) }
     }
+    var shortcutTerminalFontUp: AppShortcut = .terminalFontUp {
+        didSet { saveShortcut(shortcutTerminalFontUp, forKey: Keys.shortcutTerminalFontUp) }
+    }
+    var shortcutTerminalFontDown: AppShortcut = .terminalFontDown {
+        didSet { saveShortcut(shortcutTerminalFontDown, forKey: Keys.shortcutTerminalFontDown) }
+    }
+    var shortcutTerminalFontReset: AppShortcut = .terminalFontReset {
+        didSet { saveShortcut(shortcutTerminalFontReset, forKey: Keys.shortcutTerminalFontReset) }
+    }
     var shortcutToggleDualPane: AppShortcut = .toggleDualPane {
         didSet { saveShortcut(shortcutToggleDualPane, forKey: Keys.shortcutToggleDualPane) }
     }
@@ -203,6 +212,9 @@ final class AppPreferences {
         shortcutToggleTerminal = loadShortcut(forKey: Keys.shortcutToggleTerminal) ?? .toggleTerminal
         shortcutClearTerminal   = loadShortcut(forKey: Keys.shortcutClearTerminal)   ?? .clearTerminal
         shortcutFocusTerminal   = loadShortcut(forKey: Keys.shortcutFocusTerminal)   ?? .focusTerminal
+        shortcutTerminalFontUp   = loadShortcut(forKey: Keys.shortcutTerminalFontUp)   ?? .terminalFontUp
+        shortcutTerminalFontDown = loadShortcut(forKey: Keys.shortcutTerminalFontDown) ?? .terminalFontDown
+        shortcutTerminalFontReset = loadShortcut(forKey: Keys.shortcutTerminalFontReset) ?? .terminalFontReset
         shortcutToggleDualPane = loadShortcut(forKey: Keys.shortcutToggleDualPane) ?? .toggleDualPane
         shortcutCopyToPane    = loadShortcut(forKey: Keys.shortcutCopyToPane)    ?? .copyToPane
         shortcutMoveToPane    = loadShortcut(forKey: Keys.shortcutMoveToPane)    ?? .moveToPane
@@ -297,6 +309,9 @@ final class AppPreferences {
         static let shortcutToggleTerminal = "shortcutToggleTerminal"
         static let shortcutClearTerminal   = "shortcutClearTerminal"
         static let shortcutFocusTerminal   = "shortcutFocusTerminal"
+        static let shortcutTerminalFontUp   = "shortcutTerminalFontUp"
+        static let shortcutTerminalFontDown = "shortcutTerminalFontDown"
+        static let shortcutTerminalFontReset  = "shortcutTerminalFontReset"
         static let shortcutToggleDualPane = "shortcutToggleDualPane"
         static let shortcutCopyToPane     = "shortcutCopyToPane"
         static let shortcutMoveToPane     = "shortcutMoveToPane"
