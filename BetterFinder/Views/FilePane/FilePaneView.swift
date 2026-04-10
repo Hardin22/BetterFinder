@@ -56,16 +56,26 @@ struct FilePaneView: View {
                 } else if let err = browser.error {
                     errorView(message: err)
                 } else {
-                    FileTableView(
-                        browser: browser,
-                        items: sortedItems,
-                        appState: appState,
-                        showLocationInKindColumn: isGlobalSearch
-                    )
-                    .overlay {
-                        if sortedItems.isEmpty {
-                            emptyView.allowsHitTesting(false)
+                    switch appState.preferences.viewMode {
+                    case .list:
+                        FileTableView(
+                            browser: browser,
+                            items: sortedItems,
+                            appState: appState,
+                            showLocationInKindColumn: isGlobalSearch
+                        )
+                        .overlay {
+                            if sortedItems.isEmpty {
+                                emptyView.allowsHitTesting(false)
+                            }
                         }
+                    case .icons:
+                        FileIconGridView(browser: browser, items: sortedItems, appState: appState)
+                            .overlay {
+                                if sortedItems.isEmpty {
+                                    emptyView.allowsHitTesting(false)
+                                }
+                            }
                     }
                 }
             }
@@ -76,6 +86,7 @@ struct FilePaneView: View {
                         || browser.searchOptions != SearchOptions())
         .background(Color(nsColor: .controlBackgroundColor))
         .onAppear {
+            guard browser.items.isEmpty && !browser.isLoading else { return }
             Task { await browser.load(showHidden: appState.preferences.showHiddenFiles) }
         }
         .onChange(of: browser.currentURL) { _, _ in
